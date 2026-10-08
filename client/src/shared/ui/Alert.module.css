@@ -1,0 +1,17 @@
+.alert {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.info {
+  background: var(--signal-soft);
+  color: var(--ink);
+}

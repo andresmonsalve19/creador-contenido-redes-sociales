@@ -1,0 +1,85 @@
+.home {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-8);
+  max-width: calc(var(--wide) + 2 * var(--gutter));
+  margin-inline: auto;
+  padding: var(--space-7) var(--gutter) var(--space-8);
+  text-align: center;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-7);
+  width: 100%;
+}
+
+.heroText {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+  max-width: 46rem;
+}
+
+.lead {
+  max-width: 54ch;
+  color: var(--ink-soft);
+  font-size: var(--text-lg);
+}
+
+.how {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+  width: 100%;
+}
+
+.steps {
+  display: grid;
+  gap: var(--space-5);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  gap: var(--space-2);
+}
+
+.step p {
+  max-width: 30ch;
+  color: var(--ink-soft);
+}
+
+.stepNumber {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--signal-soft);
+  color: var(--signal);
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+@media (min-width: 768px) {
+  .steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .steps {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

@@ -1,0 +1,121 @@
+.fieldset {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  width: 100%;
+  margin-bottom: var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  text-align: center;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-3);
+}
+
+.list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.option {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+
+.cards .option {
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+}
+
+.list .option {
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.option:hover:not([data-disabled]) {
+  border-color: var(--ink-soft);
+}
+
+.option:has(.radio:checked) {
+  border-color: var(--signal);
+  background: var(--signal-soft);
+}
+
+.option:has(.radio:focus-visible) {
+  box-shadow: var(--focus);
+}
+
+.option[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.radio {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.body {
+  display: grid;
+  flex: 1;
+  gap: var(--space-1);
+}
+
+.title {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+}
+
+.cards .title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+}
+
+.badge {
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  background: var(--mark);
+  color: var(--mark-ink);
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.description {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}
+
+.aside {
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}

@@ -1,0 +1,46 @@
+.field {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.label {
+  font-weight: 600;
+  text-align: center;
+}
+
+.input {
+  width: 100%;
+  min-height: 3rem;
+  padding: var(--space-3) var(--space-4);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: center;
+}
+
+.input:hover {
+  border-color: var(--ink-soft);
+}
+
+.input:focus-visible {
+  border-color: var(--signal);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.hint,
+.error {
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.hint {
+  color: var(--ink-soft);
+}
+
+.error {
+  color: var(--danger);
+}

@@ -1,0 +1,144 @@
+/* Los formularios mantienen un ancho de lectura; la galería usa todo el ancho de la página. */
+.flow {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  width: 100%;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  width: 100%;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+/* Texto e imagen lado a lado en pantallas anchas; uno debajo del otro en móvil. */
+.models,
+.contactFields {
+  display: grid;
+  gap: var(--space-5);
+  width: 100%;
+}
+
+.contactFields {
+  gap: var(--space-4);
+}
+
+@media (min-width: 768px) {
+  .models,
+  .contactFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.narrow {
+  max-width: 28rem;
+  margin-inline: auto;
+}
+
+.inlineAction {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.inlineAction button {
+  min-width: 0;
+}
+
+.fine {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}
+
+.counter {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+}
+
+.counterLabel {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 500;
+}
+
+.counterControl {
+  display: inline-flex;
+  align-items: center;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.counterControl button {
+  width: 3rem;
+  height: 3rem;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--signal);
+  font-size: var(--text-xl);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.counterControl button:hover:not(:disabled) {
+  background: var(--signal-soft);
+}
+
+.counterControl button:disabled {
+  color: var(--line);
+  cursor: not-allowed;
+}
+
+.counterControl output {
+  min-width: 3rem;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.concept,
+.caption {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--sunken);
+}
+
+.concept p,
+.caption p {
+  max-width: 60ch;
+  white-space: pre-line;
+}
+
+.prompts {
+  display: grid;
+  gap: var(--space-5);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.promptItem textarea {
+  font-size: var(--text-sm);
+  text-align: left;
+}

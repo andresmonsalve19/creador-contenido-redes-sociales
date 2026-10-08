@@ -1,0 +1,6 @@
+node_modules
+dist
+server/data
+.agents
+.claude
+package-lock.json

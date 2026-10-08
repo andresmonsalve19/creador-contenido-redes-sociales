@@ -1,0 +1,99 @@
+.stepper {
+  width: 100%;
+}
+
+.list {
+  display: flex;
+  justify-content: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1);
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+button.step {
+  cursor: pointer;
+}
+
+button.step:hover .label {
+  text-decoration: underline;
+}
+
+.number {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.item[data-state='done'] .number {
+  border-color: var(--signal);
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+
+.item[data-state='current'] .number {
+  border-color: var(--mark);
+  background: var(--mark);
+  color: var(--mark-ink);
+}
+
+.item[data-state='current'] .step {
+  color: var(--ink);
+}
+
+.label {
+  display: none;
+}
+
+.mobileLabel {
+  margin-top: var(--space-2);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .list {
+    gap: var(--space-4);
+  }
+
+  .item:not(:last-child)::after {
+    content: '';
+    width: 2rem;
+    height: 1.5px;
+    margin-left: var(--space-4);
+    background: var(--line);
+  }
+
+  .label {
+    display: inline;
+    padding-right: var(--space-2);
+  }
+
+  .mobileLabel {
+    display: none;
+  }
+}
