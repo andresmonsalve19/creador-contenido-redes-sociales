@@ -9,3 +9,5 @@ export const PROJECT_ROOT = path.resolve(SERVER_ROOT, '..');
 export const ENV_FILE = path.join(PROJECT_ROOT, '.env');
 export const DATA_DIR = path.join(SERVER_ROOT, 'data');
 export const CLIENT_DIST = path.join(PROJECT_ROOT, 'client', 'dist');
+/** Plantillas genéricas que se descargan desde la interfaz (p. ej. lineamientos de video). */
+export const TEMPLATES_DIR = path.join(PROJECT_ROOT, 'plantillas');

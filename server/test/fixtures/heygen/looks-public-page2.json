@@ -1,0 +1,13 @@
+{
+  "data": [
+    {
+      "id": "look_stock_002",
+      "name": "Avatar de stock B",
+      "avatar_type": "studio_avatar",
+      "preview_image_url": null,
+      "gender": "female"
+    }
+  ],
+  "has_more": false,
+  "next_token": null
+}

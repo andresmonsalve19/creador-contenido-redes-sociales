@@ -9,6 +9,15 @@ const BRAND_DIR = path.join(DATA_DIR, 'brand');
 const META_FILE = path.join(BRAND_DIR, 'meta.json');
 const COMPANY_FILE = path.join(BRAND_DIR, 'company.md');
 const DESIGN_FILE = path.join(BRAND_DIR, 'design.md');
+/** Opcional: cómo deben ser los videos de la marca (estilo, guion, presentador…). */
+const VIDEO_GUIDELINES_FILE = path.join(BRAND_DIR, 'lineamientos-video.md');
+
+const MARKDOWN_FILES = {
+  company: COMPANY_FILE,
+  design: DESIGN_FILE,
+  videoGuidelines: VIDEO_GUIDELINES_FILE,
+} as const;
+export type MarkdownKind = keyof typeof MARKDOWN_FILES;
 
 export const LOGO_TYPES = {
   'image/png': 'png',
@@ -21,6 +30,7 @@ const fileMetaSchema = z.object({ fileName: z.string(), updatedAt: z.string() })
 const metaSchema = z.object({
   company: fileMetaSchema.optional(),
   design: fileMetaSchema.optional(),
+  videoGuidelines: fileMetaSchema.optional(),
   logo: fileMetaSchema
     .extend({ mimeType: z.enum(Object.keys(LOGO_TYPES) as [LogoMimeType]) })
     .optional(),
@@ -30,6 +40,7 @@ export type BrandMeta = z.infer<typeof metaSchema>;
 export interface BrandUpload {
   company?: { fileName: string; content: string };
   design?: { fileName: string; content: string };
+  videoGuidelines?: { fileName: string; content: string };
   logo?: { fileName: string; mimeType: LogoMimeType; data: Buffer };
 }
 
@@ -58,13 +69,11 @@ export async function saveBrand(upload: BrandUpload): Promise<BrandMeta> {
   const meta = await readMeta();
   const updatedAt = new Date().toISOString();
 
-  if (upload.company) {
-    await fs.writeFile(COMPANY_FILE, upload.company.content, 'utf8');
-    meta.company = { fileName: upload.company.fileName, updatedAt };
-  }
-  if (upload.design) {
-    await fs.writeFile(DESIGN_FILE, upload.design.content, 'utf8');
-    meta.design = { fileName: upload.design.fileName, updatedAt };
+  for (const kind of Object.keys(MARKDOWN_FILES) as MarkdownKind[]) {
+    const file = upload[kind];
+    if (!file) continue;
+    await fs.writeFile(MARKDOWN_FILES[kind], file.content, 'utf8');
+    meta[kind] = { fileName: file.fileName, updatedAt };
   }
   if (upload.logo) {
     if (meta.logo) await fs.rm(logoFile(meta.logo.mimeType), { force: true });
@@ -76,9 +85,9 @@ export async function saveBrand(upload: BrandUpload): Promise<BrandMeta> {
   return meta;
 }
 
-export async function readMarkdown(kind: 'company' | 'design'): Promise<string | null> {
+export async function readMarkdown(kind: MarkdownKind): Promise<string | null> {
   try {
-    return await fs.readFile(kind === 'company' ? COMPANY_FILE : DESIGN_FILE, 'utf8');
+    return await fs.readFile(MARKDOWN_FILES[kind], 'utf8');
   } catch {
     return null;
   }

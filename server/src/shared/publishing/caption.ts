@@ -1,4 +1,4 @@
-import type { Contact } from './schemas.js';
+import type { Contact } from './contact.js';
 
 const toHashtag = (tag: string) => {
   const clean = tag.replace(/[\s#]+/g, '');

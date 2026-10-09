@@ -1,0 +1,19 @@
+{
+  "data": [
+    {
+      "id": "look_privado_001",
+      "name": "Presentadora Ejemplo",
+      "avatar_type": "digital_twin",
+      "group_id": "grupo_001",
+      "preview_image_url": "https://ejemplo.invalid/avatar-1.png",
+      "preview_video_url": "https://ejemplo.invalid/avatar-1.mp4",
+      "gender": "female",
+      "tags": [],
+      "default_voice_id": "voz_privada_001",
+      "supported_api_engines": ["avatar_iv"],
+      "preferred_orientation": "portrait"
+    }
+  ],
+  "has_more": false,
+  "next_token": null
+}

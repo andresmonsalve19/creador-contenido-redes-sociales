@@ -1,0 +1,12 @@
+{
+  "data": {
+    "id": "vid_ejemplo_001",
+    "status": "completed",
+    "video_url": "https://ejemplo.invalid/video.mp4",
+    "captioned_video_url": "https://ejemplo.invalid/video-subtitulado.mp4",
+    "thumbnail_url": "https://ejemplo.invalid/miniatura.jpg",
+    "duration": 14.6,
+    "failure_code": null,
+    "failure_message": null
+  }
+}

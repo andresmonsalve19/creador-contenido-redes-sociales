@@ -5,8 +5,8 @@ import { getProvider } from '../../shared/ai/providers/index.js';
 import { getBrandContext } from '../../shared/brandContext/contextStore.js';
 import { AppError } from '../../shared/http/errors.js';
 import { validate } from '../../shared/http/validate.js';
-import { formatRulesForPrompt, readRules } from '../../shared/learning/learningStore.js';
-import { assembleCaption } from './caption.js';
+import { assembleCaption } from '../../shared/publishing/caption.js';
+import { formatRulesForPrompt, readRulesFor } from '../../shared/learning/learningStore.js';
 import { generateBrandImage } from './imageGenerator.js';
 import { PROMPTS_JSON_SCHEMA, buildImagePrompts } from './promptBuilder.js';
 import { REVISE_JSON_SCHEMA, buildRevisionPrompt } from './reviseBuilder.js';
@@ -25,7 +25,7 @@ imagesRouter.post('/prompts', express.json(), async (req, res) => {
   await assertModel(body.textModel, 'text');
   const brand = await getBrandContext();
   // Los aprendizajes se consultan en cada generación para que los cambios apliquen de inmediato.
-  const learning = formatRulesForPrompt(await readRules());
+  const learning = formatRulesForPrompt(await readRulesFor('image'));
   const { system, prompt, roles } = buildImagePrompts(body, { ...brand, learning });
 
   const raw = await getProvider().generateText({
@@ -56,7 +56,7 @@ imagesRouter.post('/revise-prompt', express.json(), async (req, res) => {
   const body = validate(reviseBody, req.body);
   await assertModel(body.textModel, 'text');
   const brand = await getBrandContext();
-  const learning = formatRulesForPrompt(await readRules());
+  const learning = formatRulesForPrompt(await readRulesFor('image'));
 
   const raw = await getProvider().generateText({
     model: body.textModel,

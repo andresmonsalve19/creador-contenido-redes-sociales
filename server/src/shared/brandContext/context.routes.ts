@@ -18,7 +18,7 @@ const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_LOGO_BYTES, files: 3 },
+  limits: { fileSize: MAX_LOGO_BYTES, files: 4 },
 });
 
 const isLogoType = (mime: string): mime is LogoMimeType => mime in LOGO_TYPES;
@@ -37,15 +37,19 @@ function readMarkdownFile(file: Express.Multer.File | undefined, label: string) 
 export const contextRouter = Router();
 
 contextRouter.get('/', async (_req, res) => {
-  const [meta, company, design] = await Promise.all([
+  const [meta, company, design, videoGuidelines] = await Promise.all([
     readMeta(),
     readMarkdown('company'),
     readMarkdown('design'),
+    readMarkdown('videoGuidelines'),
   ]);
   res.json({
     complete: isComplete(meta),
     company: meta.company ? { ...meta.company, content: company ?? '' } : null,
     design: meta.design ? { ...meta.design, content: design ?? '' } : null,
+    videoGuidelines: meta.videoGuidelines
+      ? { ...meta.videoGuidelines, content: videoGuidelines ?? '' }
+      : null,
     logo: meta.logo
       ? { ...meta.logo, url: `/api/context/logo?v=${encodeURIComponent(meta.logo.updatedAt)}` }
       : null,
@@ -70,6 +74,7 @@ contextRouter.put(
   upload.fields([
     { name: 'company', maxCount: 1 },
     { name: 'design', maxCount: 1 },
+    { name: 'videoGuidelines', maxCount: 1 },
     { name: 'logo', maxCount: 1 },
   ]),
   async (req, res) => {
@@ -79,6 +84,7 @@ contextRouter.put(
     const payload: BrandUpload = {
       company: readMarkdownFile(files.company?.[0], 'La información de la empresa'),
       design: readMarkdownFile(files.design?.[0], 'Los lineamientos de diseño'),
+      videoGuidelines: readMarkdownFile(files.videoGuidelines?.[0], 'Los lineamientos de video'),
     };
 
     if (logo) {
@@ -86,7 +92,7 @@ contextRouter.put(
       payload.logo = { fileName: logo.originalname, mimeType: logo.mimetype, data: logo.buffer };
     }
 
-    if (!payload.company && !payload.design && !payload.logo) {
+    if (!payload.company && !payload.design && !payload.videoGuidelines && !payload.logo) {
       throw badRequest('Adjunta al menos un archivo.');
     }
 

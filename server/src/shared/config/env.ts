@@ -8,6 +8,8 @@ const serverEnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   HOST: z.string().default('127.0.0.1'),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  /** Minutos máximos esperando a que HeyGen termine un video. */
+  HEYGEN_POLL_TIMEOUT_MIN: z.coerce.number().positive().max(240).default(30),
 });
 
 export const serverEnv = serverEnvSchema.parse(process.env);

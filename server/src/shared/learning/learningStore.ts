@@ -9,20 +9,38 @@ const LEARNING_FILE = path.join(BRAND_DIR, 'learning.md');
 export const MAX_RULES = 50;
 const HEADER = `# Aprendizajes de la marca
 
-Reglas aprendidas de los comentarios del usuario. Aplícalas siempre al crear prompts de imagen, textos y temáticas.
+Reglas aprendidas de los comentarios del usuario. Aplícalas siempre al crear prompts de imagen, textos, guiones y temáticas.
+Las marcadas con [imagen] o [video] aplican solo a ese formato; las demás aplican a todo.
 `;
 
-const RULE_LINE = /^\s*[-*]\s+(.+?)\s*$/;
+/** A qué contenido aplica una regla. Las reglas sin etiqueta (incluidas las antiguas) son generales. */
+export const RULE_CATEGORIES = ['image', 'video', 'general'] as const;
+export type RuleCategory = (typeof RULE_CATEGORIES)[number];
+/** Formato de contenido que consulta las reglas. */
+export type ContentKind = Exclude<RuleCategory, 'general'>;
+
+export interface LearningRule {
+  text: string;
+  category: RuleCategory;
+}
+
+const TAGS: Record<ContentKind, string> = { image: 'imagen', video: 'video' };
+const RULE_LINE = /^\s*[-*]\s+(?:\[(imagen|video)\]\s+)?(.+?)\s*$/;
 
 /** Una regla por línea, sin saltos internos. */
 const normalize = (rule: string) => rule.replace(/\s+/g, ' ').trim();
 
-export async function readRules(): Promise<string[]> {
+export async function readRules(): Promise<LearningRule[]> {
   try {
     const content = await fs.readFile(LEARNING_FILE, 'utf8');
     return content.split(/\r?\n/).flatMap((line) => {
-      const rule = RULE_LINE.exec(line)?.[1];
-      return rule ? [rule] : [];
+      const match = RULE_LINE.exec(line);
+      const text = match?.[2];
+      if (!text) return [];
+      const tag = match[1];
+      const category: RuleCategory =
+        tag === TAGS.image ? 'image' : tag === TAGS.video ? 'video' : 'general';
+      return [{ text, category }];
     });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
@@ -30,23 +48,36 @@ export async function readRules(): Promise<string[]> {
   }
 }
 
-async function writeRules(rules: string[]): Promise<void> {
+/** Reglas que aplican a un formato: las suyas y las generales. */
+export async function readRulesFor(kind: ContentKind): Promise<string[]> {
+  return (await readRules())
+    .filter((rule) => rule.category === kind || rule.category === 'general')
+    .map((rule) => rule.text);
+}
+
+async function writeRules(rules: LearningRule[]): Promise<void> {
   await fs.mkdir(BRAND_DIR, { recursive: true });
-  const body = rules.map((rule) => `- ${rule}`).join('\n');
+  const body = rules
+    .map(({ text, category }) =>
+      category === 'general' ? `- ${text}` : `- [${TAGS[category]}] ${text}`,
+    )
+    .join('\n');
   await fs.writeFile(LEARNING_FILE, `${HEADER}\n${body}\n`, 'utf8');
 }
 
 /** Agrega reglas nuevas sin duplicar las existentes. Devuelve las que realmente se guardaron. */
-export async function addRules(newRules: string[]): Promise<{ added: string[]; rules: string[] }> {
+export async function addRules(
+  newRules: LearningRule[],
+): Promise<{ added: LearningRule[]; rules: LearningRule[] }> {
   const current = await readRules();
-  const known = new Set(current.map((rule) => rule.toLowerCase()));
+  const known = new Set(current.map((rule) => rule.text.toLowerCase()));
 
-  const added: string[] = [];
+  const added: LearningRule[] = [];
   for (const raw of newRules) {
-    const rule = normalize(raw);
-    if (!rule || known.has(rule.toLowerCase())) continue;
-    known.add(rule.toLowerCase());
-    added.push(rule);
+    const text = normalize(raw.text);
+    if (!text || known.has(text.toLowerCase())) continue;
+    known.add(text.toLowerCase());
+    added.push({ text, category: raw.category });
   }
 
   if (current.length + added.length > MAX_RULES) {
@@ -60,7 +91,7 @@ export async function addRules(newRules: string[]): Promise<{ added: string[]; r
   return { added, rules };
 }
 
-export async function removeRule(index: number): Promise<string[]> {
+export async function removeRule(index: number): Promise<LearningRule[]> {
   const rules = await readRules();
   if (!Number.isInteger(index) || index < 0 || index >= rules.length) {
     throw badRequest('Ese aprendizaje no existe.');

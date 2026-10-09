@@ -1,12 +1,19 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { MulterError } from 'multer';
 import { AppError } from '../../shared/http/errors.js';
+import { VideoProviderError } from '../../shared/video/errors.js';
 
 export const notFound: RequestHandler = (_req, res) => {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ruta no encontrada.' } });
 };
 
 export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
+  if (error instanceof VideoProviderError) {
+    res
+      .status(error.status)
+      .json({ error: { code: error.code, message: error.message, provider: error.details } });
+    return;
+  }
   if (error instanceof AppError) {
     res.status(error.status).json({ error: { code: error.code, message: error.message } });
     return;
@@ -31,7 +38,13 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _ne
     return;
   }
 
-  console.error(error);
+  // Solo nombre, mensaje y traza: nunca el objeto completo, que podría incluir cabeceras,
+  // credenciales o el contenido de los archivos de la marca.
+  console.error(
+    error instanceof Error
+      ? `${error.name}: ${error.message}\n${error.stack ?? ''}`
+      : 'Error desconocido',
+  );
   res
     .status(500)
     .json({ error: { code: 'INTERNAL', message: 'Ocurrió un error inesperado en el servidor.' } });

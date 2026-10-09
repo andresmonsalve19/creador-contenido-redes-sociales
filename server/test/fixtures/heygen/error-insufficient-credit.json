@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "insufficient_credit",
+    "message": "Your account has 5 credits but this video requires 10 credits.",
+    "doc_url": "https://developers.heygen.com/docs/error-codes#insufficient-credit"
+  }
+}

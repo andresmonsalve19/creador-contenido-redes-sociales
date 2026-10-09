@@ -1,0 +1,16 @@
+{
+  "data": [
+    {
+      "id": "look_stock_001",
+      "name": "Avatar de stock A",
+      "avatar_type": "studio_avatar",
+      "preview_image_url": "https://ejemplo.invalid/stock-a.png",
+      "preview_video_url": null,
+      "gender": "male",
+      "default_voice_id": null,
+      "preferred_orientation": "landscape"
+    }
+  ],
+  "has_more": true,
+  "next_token": "pagina-2"
+}

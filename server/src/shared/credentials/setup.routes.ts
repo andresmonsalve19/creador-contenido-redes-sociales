@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { createProvider } from '../ai/providers/index.js';
 import { isComplete, readMeta } from '../brandContext/contextStore.js';
 import { readSecret } from '../config/env.js';
 import { badRequest } from '../http/errors.js';
@@ -20,23 +19,26 @@ export const setupRouter = Router();
 
 setupRouter.get('/status', async (_req, res) => {
   const meta = await readMeta();
-  const credentials = CREDENTIALS.map(({ key, label, description, helpUrl }) => ({
+  const credentials = CREDENTIALS.map(({ key, label, description, helpUrl, optional }) => ({
     key,
     label,
     description,
     helpUrl,
+    optional,
     configured: Boolean(readSecret(key)),
   }));
   const context = {
     company: Boolean(meta.company),
     design: Boolean(meta.design),
     logo: Boolean(meta.logo),
+    videoGuidelines: Boolean(meta.videoGuidelines),
   };
 
   res.json({
     credentials,
     context,
-    ready: credentials.every((c) => c.configured) && isComplete(meta),
+    // Las credenciales opcionales (p. ej. HeyGen) no bloquean el uso del resto de la app.
+    ready: credentials.every((c) => c.optional || c.configured) && isComplete(meta),
   });
 });
 
@@ -48,7 +50,7 @@ setupRouter.post('/credentials', localOnly, async (req, res) => {
   for (const [key, value] of entries) {
     const definition = CREDENTIALS.find((c) => c.key === key);
     if (!definition) throw badRequest(`Credencial desconocida: ${key}.`);
-    await createProvider(definition.provider, value).validateKey();
+    await definition.validate(value);
   }
 
   await upsertEnv(values);

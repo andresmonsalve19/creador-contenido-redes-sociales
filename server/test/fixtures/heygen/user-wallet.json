@@ -1,0 +1,8 @@
+{
+  "data": {
+    "username": "usuario_ejemplo",
+    "email": "contacto@empresa-ejemplo.com",
+    "billing_type": "wallet",
+    "wallet": { "currency": "usd", "remaining_balance": 12.5, "auto_reload": { "enabled": false } }
+  }
+}
