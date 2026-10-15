@@ -1,0 +1,183 @@
+.fieldset {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-4);
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  margin-bottom: var(--space-3);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 500;
+  text-align: center;
+}
+
+.toolbar {
+  display: grid;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.chip {
+  padding: var(--space-1) var(--space-3);
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip[aria-pressed='true'] {
+  border-color: var(--signal);
+  background: var(--signal-soft);
+  color: var(--ink);
+}
+
+.preview {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  width: 100%;
+}
+
+.preview video,
+.preview img {
+  width: min(100%, 16rem);
+  max-height: 20rem;
+  border-radius: var(--radius-md);
+  background: var(--sunken);
+  object-fit: contain;
+}
+
+.preview p {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.avatarGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  gap: var(--space-3);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.avatarCard {
+  display: grid;
+  gap: var(--space-1);
+  height: 100%;
+  padding: var(--space-2);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  text-align: center;
+  cursor: pointer;
+}
+
+.avatarCard:focus-within {
+  box-shadow: var(--focus);
+}
+
+.avatarCard[data-checked] {
+  border-color: var(--signal);
+  background: var(--signal-soft);
+}
+
+.avatarCard img,
+.noImage {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  background: var(--sunken);
+  object-fit: cover;
+}
+
+.noImage {
+  display: block;
+}
+
+.avatarName {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.avatarMeta,
+.voiceMeta {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+.voiceList {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.voiceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.voiceRow[data-checked] {
+  border-color: var(--signal);
+  background: var(--signal-soft);
+}
+
+.voiceRow label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.voiceRow label > span {
+  display: grid;
+}
+
+.listen {
+  flex-shrink: 0;
+  padding: var(--space-1) var(--space-3);
+  border: 0;
+  border-radius: 999px;
+  background: var(--sunken);
+  color: var(--signal);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.empty,
+.fine {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}

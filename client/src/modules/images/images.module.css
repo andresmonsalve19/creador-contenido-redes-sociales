@@ -23,38 +23,17 @@
 }
 
 /* Texto e imagen lado a lado en pantallas anchas; uno debajo del otro en móvil. */
-.models,
-.contactFields {
+.models {
   display: grid;
   gap: var(--space-5);
   width: 100%;
 }
 
-.contactFields {
-  gap: var(--space-4);
-}
-
 @media (min-width: 768px) {
-  .models,
-  .contactFields {
+  .models {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }
-}
-
-.narrow {
-  max-width: 28rem;
-  margin-inline: auto;
-}
-
-.inlineAction {
-  display: flex;
-  justify-content: center;
-  width: 100%;
-}
-
-.inlineAction button {
-  min-width: 0;
 }
 
 .fine {

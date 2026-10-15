@@ -1,6 +1,8 @@
 import type { PromptsRequest } from './api';
 import type { AspectRatio, Contact, PostFormat, PromptsResult, SlideResult } from './types';
-import { DEFAULT_CONTACT, DEFAULT_CTA, MAX_SLIDES, MIN_SLIDES } from './types';
+import { EMPTY_CONTACT, trimContact } from '../../shared/publishing/contact';
+import { DEFAULT_CTA } from '../../shared/publishing/cta';
+import { MAX_SLIDES, MIN_SLIDES } from './types';
 
 /** Índice dentro de IMAGE_FLOW_STEPS (0 = tipo de publicación, gestionado fuera del módulo). */
 export type WizardStep = 1 | 2 | 3;
@@ -37,7 +39,7 @@ export const initialWizardState: WizardState = {
   format: 'carousel',
   slideCount: 5,
   aspectRatio: '4:5',
-  contact: DEFAULT_CONTACT,
+  contact: EMPTY_CONTACT,
   cta: DEFAULT_CTA,
   topic: '',
   prompts: null,
@@ -53,9 +55,9 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
       return { ...state, step: action.step };
     case 'setSettings': {
       const promptInputsChanged =
-        action.contact.email !== state.contact.email ||
-        action.contact.website !== state.contact.website ||
-        action.cta !== state.cta;
+        // Solo cuenta lo que sale en la publicación (datos marcados y con valor).
+        JSON.stringify(trimContact(action.contact)) !==
+          JSON.stringify(trimContact(state.contact)) || action.cta !== state.cta;
       return {
         ...state,
         textModel: action.textModel,
@@ -114,10 +116,7 @@ export function buildPromptsRequest(state: WizardState): PromptsRequest | null {
     slideCount: slideCountFor(state),
     topic: state.topic.trim(),
     aspectRatio: state.aspectRatio,
-    contact: {
-      email: state.contact.email.trim(),
-      website: state.contact.website.trim(),
-    },
+    contact: trimContact(state.contact),
     cta: state.cta.trim(),
   };
 }

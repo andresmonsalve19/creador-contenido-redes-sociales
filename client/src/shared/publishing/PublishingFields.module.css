@@ -1,0 +1,66 @@
+.group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+.narrow {
+  max-width: 28rem;
+  margin-inline: auto;
+}
+
+.contactFields {
+  display: grid;
+  gap: var(--space-4);
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .contactFields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.contactField {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.include {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.include input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--signal);
+}
+
+.include:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.inlineAction {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.inlineAction button {
+  min-width: 0;
+}
+
+.fine {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+}

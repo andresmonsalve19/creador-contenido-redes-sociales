@@ -1,2 +1,2 @@
-// Punto de entrada del módulo de reels (deshabilitado en core/modules.ts hasta implementarlo).
-export { default } from './ReelsPlaceholder';
+// Punto de entrada del módulo de reels: core/modules.ts lo carga de forma diferida.
+export { default } from './ReelsWizard';

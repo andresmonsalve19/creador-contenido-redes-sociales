@@ -138,7 +138,7 @@ export function PromptReviewStep({ state, dispatch }: PromptReviewStepProps) {
         />
       )}
 
-      <LearningBox textModel={state.textModel} />
+      <LearningBox textModel={state.textModel} kind="image" />
     </>
   );
 }

@@ -48,6 +48,8 @@ export const videoSettingsSchema = z.object({
   captions: z.boolean(),
   aspectRatio: z.enum(VIDEO_ASPECT_RATIOS),
   durationSeconds: z.union(VIDEO_DURATIONS.map((value) => z.literal(value))),
+  /** Kit de marca del proveedor (colores, fuentes y logo) para la edición automática. */
+  brandKitId: providerId.nullable(),
   /** Reglas que el guion debe cumplir siempre (p. ej. no prometer resultados). Tienen prioridad. */
   complianceRules: z.string().trim().max(3000),
   authorizations: z.record(providerId, avatarAuthorizationSchema),
@@ -64,10 +66,15 @@ export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
   captions: true,
   aspectRatio: '9:16',
   durationSeconds: 30,
+  brandKitId: null,
   complianceRules: '',
   authorizations: {},
 };
 
-/** Los avatares que pueden representar a una persona real exigen autorización escrita. */
-export const requiresAuthorization = (type: AvatarType) =>
-  type === 'digital_twin' || type === 'photo_avatar';
+/**
+ * Exigen autorización escrita los avatares propios de la cuenta que pueden representar a una
+ * persona real (digital twin o photo avatar). Los de stock son del catálogo licenciado del
+ * proveedor y no la necesitan.
+ */
+export const requiresAuthorization = (type: AvatarType, ownership: 'public' | 'private') =>
+  ownership === 'private' && (type === 'digital_twin' || type === 'photo_avatar');

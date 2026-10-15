@@ -18,10 +18,18 @@ const spec: Job['spec'] = {
   wordsPerSecond: 2.5,
   captions: true,
   voiceSpeed: 1,
+  style: 'simple',
+  brandCards: { intro: false, outro: false },
+  varyLooks: false,
+  styleParagraph: '',
   scenes: [
     {
       role: 'single',
+      kind: 'avatar',
       title: 'Escena',
+      visualPrompt: '',
+      gestures: '',
+      onScreenText: '',
       script: 'Hola, este es un guion de prueba.',
       subtitleNotes: '',
       backgroundNote: '',
@@ -88,6 +96,30 @@ function fakeProvider(overrides: Partial<VideoProvider> = {}) {
     getAvatar: async () => {
       throw new Error('no usado');
     },
+    listGroupLooks: async () => [],
+    listBrandKits: async () => [],
+    createBrandKitFromUrl: async () => 'kit_001',
+    getBrandKit: async () => {
+      throw new Error('no usado');
+    },
+    updateBrandKit: async () => {
+      throw new Error('no usado');
+    },
+    createAgentSession: async () => 'sesion_001',
+    getAgentSession: async () => ({
+      status: 'reviewing',
+      progress: 40,
+      title: null,
+      videoId: null,
+      messages: [],
+    }),
+    sendAgentMessage: async () => undefined,
+    getAgentResource: async (_session, id) => ({
+      id,
+      type: 'image',
+      url: null,
+      thumbnailUrl: null,
+    }),
     listVoices: async () => [],
     uploadImage: async () => 'asset_001',
     createVideo: async (_request, key) => {
@@ -300,5 +332,188 @@ describe('jobRunner', () => {
 
     assert.equal(uploads.length, 1);
     assert.equal(existsSync(path.join(dir, 'history.json')), true);
+  });
+
+  it('estilo dinámico: tarjeta de apertura, presentador, apoyo narrado y tarjeta de cierre', async () => {
+    let request: Parameters<VideoProvider['createVideo']>[0] | null = null;
+    const uploads: string[] = [];
+    const { provider } = fakeProvider({
+      uploadImage: async (_data, _mime, name) => {
+        uploads.push(name);
+        return `asset_${uploads.length}`;
+      },
+      createVideo: async (req) => {
+        request = req;
+        return 'vid_dinamico';
+      },
+    });
+    const avatarScene = spec.scenes[0]!;
+    const dynamic: Job['spec'] = {
+      ...spec,
+      style: 'dynamic',
+      brandCards: { intro: true, outro: true },
+      cards: {
+        introImageId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        outroImageId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      },
+      scenes: [
+        { ...avatarScene, role: 'hook', motionPrompt: 'asiente' },
+        {
+          ...avatarScene,
+          role: 'cta',
+          kind: 'broll',
+          avatarId: '',
+          imageId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          script: 'Narración sobre la imagen.',
+        },
+      ],
+    };
+    await store.save(newJob('99999999-0000-4000-8000-000000000001', { spec: dynamic }));
+    const r = runner(provider);
+    r.enqueue('99999999-0000-4000-8000-000000000001');
+    await r.whenIdle();
+
+    const scenes = (request as Parameters<VideoProvider['createVideo']>[0] | null)?.scenes ?? [];
+    assert.deepEqual(
+      scenes.map((scene) => scene.kind),
+      ['image', 'avatar', 'image', 'image'],
+    );
+    assert.deepEqual(scenes[0], { kind: 'image', assetId: 'asset_1', durationSeconds: 2 });
+    assert.equal(scenes[1]?.kind === 'avatar' && scenes[1].motionPrompt, 'asiente');
+    assert.deepEqual(scenes[2], {
+      kind: 'image',
+      assetId: 'asset_2',
+      narration: { script: 'Narración sobre la imagen.', voiceId: 'voz_001' },
+    });
+    assert.deepEqual(scenes[3], { kind: 'image', assetId: 'asset_3', durationSeconds: 3 });
+    assert.equal(uploads.length, 3);
+  });
+
+  describe('edición automática (Video Agent)', () => {
+    const agentSpec: Job['spec'] = { ...spec, style: 'agent', brandKitId: 'kit_001' };
+    const agentState = () => ({
+      sessionId: null,
+      prompt: 'prompt ficticio',
+      progress: null,
+      messages: [],
+      storyboard: [],
+    });
+
+    it('crea la sesión en modo revisión y se detiene con el storyboard, sin generar', async () => {
+      const created: Parameters<VideoProvider['createAgentSession']>[0][] = [];
+      let videoPolls = 0;
+      const { provider } = fakeProvider({
+        createAgentSession: async (request) => {
+          created.push(request);
+          return 'sesion_001';
+        },
+        getAgentSession: async () => ({
+          status: 'reviewing',
+          progress: 50,
+          title: null,
+          videoId: null,
+          messages: [
+            {
+              role: 'model',
+              content: 'Storyboard listo',
+              type: 'text',
+              createdAt: 1,
+              resourceIds: ['res_1'],
+            },
+          ],
+        }),
+        getVideo: async () => {
+          videoPolls++;
+          return done;
+        },
+      });
+      await store.save(
+        newJob('aaaaaaaa-0000-4000-8000-000000000001', { spec: agentSpec, agent: agentState() }),
+      );
+      const r = createJobRunner({
+        store,
+        getProvider: () => provider,
+        loadBackground: async () => ({
+          data: Buffer.from(''),
+          mimeType: 'image/png',
+          fileName: 'x.png',
+        }),
+        loadLogo: async () => ({ mimeType: 'image/png', data: Buffer.from('logo') }),
+        reelsDir: dir,
+        timeoutMs: 60_000,
+        sleep: async () => undefined,
+      });
+      r.enqueue('aaaaaaaa-0000-4000-8000-000000000001');
+      await r.whenIdle();
+
+      const job = await store.get('aaaaaaaa-0000-4000-8000-000000000001');
+      assert.equal(job?.status, 'reviewing');
+      assert.equal(job?.agent?.sessionId, 'sesion_001');
+      assert.deepEqual(
+        job?.agent?.storyboard.map((item) => item.id),
+        ['res_1'],
+      );
+      assert.equal(created.length, 1);
+      assert.equal(created[0]?.mode, 'chat');
+      assert.equal(created[0]?.brandKitId, 'kit_001');
+      assert.equal(created[0]?.avatarId, 'look_stock_001');
+      assert.equal(created[0]?.files.length, 1);
+      assert.equal(videoPolls, 0, 'no se consulta ningún render antes de aprobar');
+    });
+
+    it('tras aprobar, sigue el render y descarga el video sin crear otra sesión', async () => {
+      let sessions = 0;
+      const { provider } = fakeProvider({
+        createAgentSession: async () => {
+          sessions++;
+          return 'otra';
+        },
+        getAgentSession: async () => ({
+          status: 'generating',
+          progress: 80,
+          title: null,
+          videoId: 'vid_agente',
+          messages: [],
+        }),
+      });
+      await store.save(
+        newJob('aaaaaaaa-0000-4000-8000-000000000002', {
+          spec: agentSpec,
+          status: 'drafting',
+          agent: { ...agentState(), sessionId: 'sesion_001' },
+        }),
+      );
+      const r = runner(provider);
+      r.enqueue('aaaaaaaa-0000-4000-8000-000000000002');
+      await r.whenIdle();
+
+      const job = await store.get('aaaaaaaa-0000-4000-8000-000000000002');
+      assert.equal(sessions, 0);
+      assert.equal(job?.providerVideoId, 'vid_agente');
+      assert.equal(job?.status, 'completed');
+    });
+
+    it('no reintenta crear la sesión ante un error que no sea de límite de tasa', async () => {
+      let attempts = 0;
+      const { provider } = fakeProvider({
+        createAgentSession: async () => {
+          attempts++;
+          throw new VideoProviderError(502, {
+            proveedor: 'heygen',
+            codigo: 'http_502',
+            mensaje: 'caída',
+            reintentable: true,
+          });
+        },
+      });
+      await store.save(
+        newJob('aaaaaaaa-0000-4000-8000-000000000003', { spec: agentSpec, agent: agentState() }),
+      );
+      const r = runner(provider);
+      r.enqueue('aaaaaaaa-0000-4000-8000-000000000003');
+      await r.whenIdle();
+      assert.equal(attempts, 1);
+      assert.equal((await store.get('aaaaaaaa-0000-4000-8000-000000000003'))?.status, 'failed');
+    });
   });
 });

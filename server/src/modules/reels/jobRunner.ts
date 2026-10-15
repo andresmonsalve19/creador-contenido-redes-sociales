@@ -4,8 +4,14 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { VideoProviderError, isRetryable } from '../../shared/video/errors.js';
-import type { RenderRequest, SceneBackground, VideoProvider } from '../../shared/video/types.js';
-import { videoFileName, type Job, type JobStore } from './jobStore.js';
+import type {
+  RenderRequest,
+  RenderScene,
+  SceneBackground,
+  VideoProvider,
+} from '../../shared/video/types.js';
+import { CARD_SECONDS } from './estimate.js';
+import { ACTIVE_STATUSES, videoFileName, type Job, type JobStore } from './jobStore.js';
 import type { SceneBackgroundSpec } from './schemas.js';
 
 export interface BackgroundFile {
@@ -19,6 +25,8 @@ export interface JobRunnerDeps {
   getProvider: () => VideoProvider;
   /** Lee del disco la imagen de un fondo (de la marca o generada). */
   loadBackground: (background: SceneBackgroundSpec) => Promise<BackgroundFile>;
+  /** Logo de la marca en PNG o JPEG para adjuntarlo al agente de video (null si no hay). */
+  loadLogo?: () => Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer } | null>;
   /** Carpeta donde se guardan los MP4 (data/reels). */
   reelsDir: string;
   /** Tiempo máximo esperando a que el proveedor termine un render. */
@@ -49,6 +57,7 @@ export function createJobRunner(deps: JobRunnerDeps) {
     store,
     getProvider,
     loadBackground,
+    loadLogo = async () => null,
     reelsDir,
     timeoutMs,
     maxActive = 2,
@@ -74,6 +83,19 @@ export function createJobRunner(deps: JobRunnerDeps) {
     }
   }
 
+  /** Reintenta solo cuando el proveedor pidió esperar (429): en ese caso no se creó nada. */
+  async function withRateLimitRetries<T>(task: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await task();
+      } catch (error) {
+        const rateLimited = error instanceof VideoProviderError && error.status === 429;
+        if (!rateLimited || attempt >= MAX_ATTEMPTS) throw error;
+        await sleep((error.retryAfterSeconds ?? 2 * attempt) * 1000);
+      }
+    }
+  }
+
   /** Sube cada fondo de imagen una sola vez y arma la petición para el proveedor. */
   async function buildRequest(job: Job, provider: VideoProvider): Promise<RenderRequest> {
     const uploaded = new Map<string, string>();
@@ -92,13 +114,47 @@ export function createJobRunner(deps: JobRunnerDeps) {
       return { type: 'image', assetId };
     };
 
-    const scenes = [];
-    for (const scene of job.spec.scenes) {
+    /** Sube una imagen generada (apoyo o tarjeta) una sola vez y devuelve su id en el proveedor. */
+    const imageAsset = async (imageId: string) => {
+      const background = await toBackground({ type: 'generated', imageId });
+      if (background.type !== 'image') throw new Error('Imagen no válida.');
+      return background.assetId;
+    };
+
+    const scenes: RenderScene[] = [];
+    const cards = job.spec.cards;
+    if (cards?.introImageId) {
       scenes.push({
+        kind: 'image',
+        assetId: await imageAsset(cards.introImageId),
+        durationSeconds: CARD_SECONDS.intro,
+      });
+    }
+    for (const scene of job.spec.scenes) {
+      if (scene.kind === 'broll' && scene.imageId) {
+        // Imagen de apoyo a pantalla completa mientras la misma voz sigue narrando.
+        scenes.push({
+          kind: 'image',
+          assetId: await imageAsset(scene.imageId),
+          narration: { script: scene.script, voiceId: scene.voiceId },
+        });
+        continue;
+      }
+      scenes.push({
+        kind: 'avatar',
         avatarId: scene.avatarId,
         voiceId: scene.voiceId,
         script: scene.script,
         background: await toBackground(scene.background),
+        engine: scene.engine ?? null,
+        motionPrompt: scene.motionPrompt ?? null,
+      });
+    }
+    if (cards?.outroImageId) {
+      scenes.push({
+        kind: 'image',
+        assetId: await imageAsset(cards.outroImageId),
+        durationSeconds: CARD_SECONDS.outro,
       });
     }
     return {
@@ -150,28 +206,19 @@ export function createJobRunner(deps: JobRunnerDeps) {
     log(`Reel ${id}: error ${details.codigo}`);
   }
 
-  async function run(id: string): Promise<void> {
-    let job = await store.get(id);
-    if (!job || job.status === 'completed' || job.status === 'failed') return;
-    const provider = getProvider();
+  const timeoutError = (provider: VideoProvider) =>
+    new VideoProviderError(504, {
+      proveedor: provider.id,
+      codigo: 'timeout',
+      mensaje: `El proveedor no terminó el video en ${Math.round(timeoutMs / 60_000)} minutos. Puede seguir procesándose en tu cuenta de HeyGen.`,
+      reintentable: false,
+    });
 
-    if (!job.providerVideoId) {
-      const request = await buildRequest(job, provider);
-      const providerVideoId = await withRetries(() => provider.createVideo(request, job!.id));
-      job = await store.update(id, { providerVideoId, status: 'pending', error: null });
-      log(`Reel ${id}: enviado a ${provider.id}`);
-    }
-
+  /** Sigue el render hasta completarlo y descarga el video de inmediato. */
+  async function followRender(job: Job, provider: VideoProvider): Promise<void> {
     const deadline = now() + timeoutMs;
     for (let poll = 0; ; poll++) {
-      if (now() > deadline) {
-        throw new VideoProviderError(504, {
-          proveedor: provider.id,
-          codigo: 'timeout',
-          mensaje: `El proveedor no terminó el video en ${Math.round(timeoutMs / 60_000)} minutos. Puede seguir procesándose en tu cuenta de HeyGen.`,
-          reintentable: false,
-        });
-      }
+      if (now() > deadline) throw timeoutError(provider);
       await sleep(pollDelaysMs[Math.min(poll, pollDelaysMs.length - 1)] ?? 30_000);
 
       let state;
@@ -196,18 +243,149 @@ export function createJobRunner(deps: JobRunnerDeps) {
       if (state.status === 'completed') {
         if (!state.downloadUrl) continue;
         const file = await download(job, provider, state.downloadUrl);
-        await store.update(id, {
+        await store.update(job.id, {
           status: 'completed',
           file,
           durationSeconds: state.durationSeconds,
           error: null,
         });
-        log(`Reel ${id}: descargado`);
+        log(`Reel ${job.id}: descargado`);
         return;
       }
 
-      if (state.status !== job.status) job = await store.update(id, { status: state.status });
+      if (state.status !== job.status) job = await store.update(job.id, { status: state.status });
     }
+  }
+
+  /**
+   * Edición automática (Video Agent): crea la sesión en modo revisión y la sigue hasta que el
+   * storyboard queda listo (se detiene a esperar la aprobación del usuario) o hasta que el
+   * agente empieza a renderizar (entonces sigue el render como cualquier otro video).
+   */
+  async function runAgent(job: Job, provider: VideoProvider): Promise<void> {
+    const agent = job.agent;
+    if (!agent) throw new Error('Falta el guion para el agente de video.');
+
+    if (!agent.sessionId) {
+      const logo = await loadLogo();
+      const presenter = job.spec.scenes.find((scene) => scene.kind === 'avatar');
+      // Crear la sesión no es idempotente: solo se reintenta si el proveedor pidió esperar
+      // (429), porque en ese caso no creó nada.
+      const sessionId = await withRateLimitRetries(() =>
+        provider.createAgentSession({
+          prompt: agent.prompt,
+          mode: 'chat',
+          avatarId: presenter?.avatarId || null,
+          voiceId: presenter?.voiceId || null,
+          brandKitId: job.spec.brandKitId ?? null,
+          orientation: job.spec.aspectRatio === '16:9' ? 'landscape' : 'portrait',
+          files: logo ? [logo] : [],
+        }),
+      );
+      job = await store.update(job.id, {
+        status: 'drafting',
+        agent: { ...agent, sessionId },
+        error: null,
+      });
+      log(`Reel ${job.id}: sesión del agente creada`);
+    }
+
+    const sessionId = job.agent?.sessionId ?? '';
+    const deadline = now() + timeoutMs;
+    for (let poll = 0; ; poll++) {
+      if (now() > deadline) throw timeoutError(provider);
+      await sleep(pollDelaysMs[Math.min(poll, pollDelaysMs.length - 1)] ?? 30_000);
+
+      let session;
+      try {
+        session = await provider.getAgentSession(sessionId);
+      } catch (error) {
+        if (isRetryable(error)) continue;
+        throw error;
+      }
+
+      const messages = session.messages
+        .filter((message) => message.content.trim())
+        .slice(0, 12)
+        .map((message) => ({
+          role: message.role,
+          content: message.content,
+          createdAt: message.createdAt,
+        }));
+      const current = job.agent ?? agent;
+
+      if (session.status === 'failed') {
+        const reason = session.messages.find((m) => m.type === 'error' || m.role === 'model');
+        throw new VideoProviderError(502, {
+          proveedor: provider.id,
+          codigo: 'agent_failed',
+          mensaje: reason?.content
+            ? `El agente de HeyGen no pudo continuar: ${reason.content}`
+            : 'El agente de HeyGen no pudo continuar.',
+          reintentable: false,
+        });
+      }
+
+      if (session.videoId) {
+        job = await store.update(job.id, {
+          providerVideoId: session.videoId,
+          status: 'processing',
+          agent: { ...current, progress: session.progress, messages },
+        });
+        await followRender(job, provider);
+        return;
+      }
+
+      if (session.status === 'reviewing' || session.status === 'waiting_for_input') {
+        // Storyboard listo: se guardan sus imágenes y se espera la decisión del usuario.
+        const resourceIds = [
+          ...new Set(
+            session.messages
+              .filter((message) => message.role === 'model')
+              .flatMap((message) => message.resourceIds),
+          ),
+        ].slice(0, 12);
+        const storyboard = [];
+        for (const resourceId of resourceIds) {
+          try {
+            storyboard.push(await provider.getAgentResource(sessionId, resourceId));
+          } catch {
+            // Un recurso que no carga no impide revisar los demás.
+          }
+        }
+        await store.update(job.id, {
+          status: 'reviewing',
+          agent: { ...current, progress: session.progress, messages, storyboard },
+        });
+        log(`Reel ${job.id}: storyboard listo para revisar`);
+        return;
+      }
+
+      job = await store.update(job.id, {
+        status: 'drafting',
+        agent: { ...current, progress: session.progress, messages },
+      });
+    }
+  }
+
+  async function run(id: string): Promise<void> {
+    let job = await store.get(id);
+    if (!job || job.status === 'completed' || job.status === 'failed') return;
+    if (job.status === 'reviewing') return; // espera la decisión del usuario
+    const provider = getProvider();
+
+    if (job.spec.style === 'agent' && !job.providerVideoId) {
+      await runAgent(job, provider);
+      return;
+    }
+
+    if (!job.providerVideoId) {
+      const request = await buildRequest(job, provider);
+      const providerVideoId = await withRetries(() => provider.createVideo(request, job!.id));
+      job = await store.update(id, { providerVideoId, status: 'pending', error: null });
+      log(`Reel ${id}: enviado a ${provider.id}`);
+    }
+    await followRender(job, provider);
   }
 
   function pump(): void {
@@ -236,7 +414,7 @@ export function createJobRunner(deps: JobRunnerDeps) {
     async resume(): Promise<void> {
       const jobs = await store.list();
       for (const job of jobs.toReversed()) {
-        if (job.status === 'queued' || job.status === 'pending' || job.status === 'processing') {
+        if (ACTIVE_STATUSES.includes(job.status)) {
           this.enqueue(job.id);
         }
       }

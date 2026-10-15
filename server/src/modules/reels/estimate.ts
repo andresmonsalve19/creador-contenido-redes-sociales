@@ -1,4 +1,26 @@
-import type { SceneRole } from './schemas.js';
+import type { SceneKind, SceneRole, VideoStyle } from './schemas.js';
+
+/** Duración fija de las tarjetas de marca (segundos). */
+export const CARD_SECONDS = { intro: 2, outro: 3 } as const;
+
+/** Segundos disponibles para hablar: la duración elegida menos las tarjetas de marca. */
+export function speakingSeconds(
+  durationSeconds: number,
+  cards: { intro: boolean; outro: boolean },
+) {
+  const cardTime = (cards.intro ? CARD_SECONDS.intro : 0) + (cards.outro ? CARD_SECONDS.outro : 0);
+  return Math.max(8, durationSeconds - cardTime);
+}
+
+/**
+ * Tipo de cada escena. En estilo dinámico se alternan presentador e imágenes de apoyo, empezando
+ * y terminando con el presentador (gancho y cierre): 3 escenas → A B A; 5 → A B A B A.
+ */
+export function sceneKinds(count: number, style: VideoStyle): SceneKind[] {
+  return Array.from({ length: count }, (_, index) =>
+    style !== 'simple' && index > 0 && index < count - 1 && index % 2 === 1 ? 'broll' : 'avatar',
+  );
+}
 
 export const countWords = (text: string) => text.split(/\s+/).filter(Boolean).length;
 

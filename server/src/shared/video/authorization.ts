@@ -1,5 +1,5 @@
 import { AppError } from '../http/errors.js';
-import { getVideoProvider } from './index.js';
+import { getVideoProvider, listAvatars } from './index.js';
 import type { VideoAvatar } from './types.js';
 import { requiresAuthorization, type VideoSettings } from './videoSettings.schema.js';
 
@@ -14,10 +14,15 @@ export async function assertAvatarsAuthorized(
 ): Promise<VideoAvatar[]> {
   const provider = getVideoProvider();
   const unique = [...new Set(avatarIds)];
-  const avatars = await Promise.all(unique.map((id) => provider.getAvatar(id)));
+  // El listado (en caché) dice si el avatar es propio o de stock. Si no aparece en él, se consulta
+  // el tipo y, por seguridad, se trata como propio.
+  const known = new Map((await listAvatars()).map((avatar) => [avatar.id, avatar]));
+  const avatars = await Promise.all(
+    unique.map(async (id) => known.get(id) ?? provider.getAvatar(id)),
+  );
 
   const blocked = avatars.filter(
-    (avatar) => requiresAuthorization(avatar.type) && !authorizations[avatar.id],
+    (avatar) => requiresAuthorization(avatar.type, avatar.ownership) && !authorizations[avatar.id],
   );
   if (blocked.length > 0) {
     throw new AppError(

@@ -7,7 +7,17 @@ import { badRequest } from '../http/errors.js';
 import { localOnly } from '../http/localOnly.js';
 import { validate } from '../http/validate.js';
 import { assertAvatarsAuthorized } from './authorization.js';
-import { getVideoProvider, listAvatars, listVoices } from './index.js';
+import { randomUUID } from 'node:crypto';
+import { readMarkdown } from '../brandContext/contextStore.js';
+import { paletteFrom, suggestColorRoles, websiteFrom } from './brandSuggestions.js';
+import {
+  forgetBrandKits,
+  getVideoProvider,
+  listAvatars,
+  listBrandKits,
+  listVoices,
+} from './index.js';
+import { BRAND_COLOR_ROLES } from './types.js';
 import { videoSettingsSchema } from './videoSettings.schema.js';
 import {
   BACKGROUND_TYPES,
@@ -89,6 +99,59 @@ videoRouter.get('/avatars', async (_req, res) => {
 videoRouter.get('/voices', async (req, res) => {
   const { language } = validate(voicesQuery, req.query);
   res.json({ voices: await listVoices(language || undefined) });
+});
+
+videoRouter.get('/brand-kits', async (_req, res) => {
+  res.json({ brandKits: await listBrandKits() });
+});
+
+/** Sugerencias para crear el kit: sitio web de la empresa y colores por rol de los lineamientos. */
+videoRouter.get('/brand-kits/suggestions', async (_req, res) => {
+  const [company, design] = await Promise.all([readMarkdown('company'), readMarkdown('design')]);
+  const palette = paletteFrom(design ?? '');
+  res.json({
+    website: websiteFrom(company ?? ''),
+    palette,
+    colorRoles: suggestColorRoles(palette),
+  });
+});
+
+const createKitBody = z.object({
+  url: z.url({ protocol: /^https?$/, message: 'Escribe la dirección completa del sitio web.' }),
+  name: z.string().trim().min(1).max(256),
+});
+
+/** Crea un kit importando el sitio web público de la marca. Solo desde este equipo. */
+videoRouter.post('/brand-kits', localOnly, async (req, res) => {
+  const { url, name } = validate(createKitBody, req.body);
+  const id = await getVideoProvider().createBrandKitFromUrl(url, name, randomUUID());
+  forgetBrandKits();
+  res.status(201).json({ brandKit: await getVideoProvider().getBrandKit(id) });
+});
+
+const kitParams = z.object({ id: z.string().trim().min(1).max(200) });
+
+videoRouter.get('/brand-kits/:id', async (req, res) => {
+  const { id } = validate(kitParams, req.params);
+  res.json({ brandKit: await getVideoProvider().getBrandKit(id) });
+});
+
+const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Usa colores en formato HEX.');
+const updateKitBody = z.object({
+  colorRoles: z.object(Object.fromEntries(BRAND_COLOR_ROLES.map((role) => [role, hex.optional()]))),
+  primaryLogoId: z.string().trim().min(1).max(200).optional(),
+});
+
+/** Fija los colores exactos y el logo principal del kit. Solo desde este equipo. */
+videoRouter.patch('/brand-kits/:id', localOnly, async (req, res) => {
+  const { id } = validate(kitParams, req.params);
+  const body = validate(updateKitBody, req.body);
+  const brandKit = await getVideoProvider().updateBrandKit(id, {
+    colorRoles: body.colorRoles as Record<string, string>,
+    primaryLogoId: body.primaryLogoId,
+  });
+  forgetBrandKits();
+  res.json({ brandKit });
 });
 
 videoRouter.get('/account', async (_req, res) => {

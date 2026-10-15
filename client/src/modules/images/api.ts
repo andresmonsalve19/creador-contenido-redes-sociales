@@ -1,6 +1,7 @@
 import { api } from '../../shared/api/client';
 import type { InlineImage } from '../../shared/api/types';
-import type { AspectRatio, Contact, PostFormat, PromptsResult, SlideRole } from './types';
+import type { ContactValues } from '../../shared/publishing/contact';
+import type { AspectRatio, PostFormat, PromptsResult, SlideRole } from './types';
 
 export interface PromptsRequest {
   textModel: string;
@@ -8,7 +9,7 @@ export interface PromptsRequest {
   slideCount: number;
   topic: string;
   aspectRatio: AspectRatio;
-  contact: Contact;
+  contact: ContactValues;
   cta: string;
 }
 

@@ -16,13 +16,18 @@ const MAX_LOGO = 5 * 1024 * 1024;
 interface Files {
   company: File | null;
   design: File | null;
+  /** Opcional: lineamientos de video para los reels. */
+  videoGuidelines: File | null;
   logo: File | null;
 }
 
-function validateFiles({ company, design, logo }: Files): string | null {
+const NO_FILES: Files = { company: null, design: null, videoGuidelines: null, logo: null };
+
+function validateFiles({ company, design, videoGuidelines, logo }: Files): string | null {
   for (const [file, label] of [
     [company, 'La información de la empresa'],
     [design, 'Los lineamientos de diseño'],
+    [videoGuidelines, 'Los lineamientos de video'],
   ] as const) {
     if (!file) continue;
     if (!MARKDOWN.test(file.name)) return `${label} debe ser un archivo .md.`;
@@ -49,7 +54,7 @@ interface BrandFormProps {
 
 export function BrandForm({ current, onDone }: BrandFormProps) {
   const queryClient = useQueryClient();
-  const [files, setFiles] = useState<Files>({ company: null, design: null, logo: null });
+  const [files, setFiles] = useState<Files>(NO_FILES);
   const [clientError, setClientError] = useState<string | null>(null);
   const [localLogo, setLocalLogo] = useState<string | null>(null);
   const logoPreview = localLogo ?? current?.logo?.url ?? null;
@@ -58,7 +63,7 @@ export function BrandForm({ current, onDone }: BrandFormProps) {
     mutationFn: (formData: FormData) =>
       api<{ complete: boolean }>('/context', { method: 'PUT', formData }),
     onSuccess: async ({ complete }) => {
-      setFiles({ company: null, design: null, logo: null });
+      setFiles(NO_FILES);
       setLocalLogo(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: setupKeys.status }),
@@ -73,7 +78,7 @@ export function BrandForm({ current, onDone }: BrandFormProps) {
     design: Boolean(files.design || current?.design),
     logo: Boolean(files.logo || current?.logo),
   };
-  const hasChanges = Boolean(files.company || files.design || files.logo);
+  const hasChanges = Boolean(files.company || files.design || files.videoGuidelines || files.logo);
   const complete = has.company && has.design && has.logo;
 
   const setFile = (key: keyof Files) => (file: File | null) => {
@@ -98,7 +103,7 @@ export function BrandForm({ current, onDone }: BrandFormProps) {
       return;
     }
     const formData = new FormData();
-    for (const key of ['company', 'design', 'logo'] as const) {
+    for (const key of ['company', 'design', 'videoGuidelines', 'logo'] as const) {
       const file = files[key];
       if (file) formData.append(key, file);
     }
@@ -137,7 +142,23 @@ export function BrandForm({ current, onDone }: BrandFormProps) {
             ) : null
           }
         />
+        <FileDrop
+          label="Lineamientos de video (opcional)"
+          hint="Markdown con estilo de los reels, guion, presentador, subtítulos y temas prohibidos."
+          accept=".md,.markdown,text/markdown"
+          file={files.videoGuidelines}
+          currentFileName={current?.videoGuidelines?.fileName}
+          onChange={setFile('videoGuidelines')}
+        />
       </div>
+
+      <p className={styles.template}>
+        ¿No sabes por dónde empezar con los lineamientos de video?{' '}
+        <a href="/api/video/template" download>
+          Descarga la plantilla
+        </a>
+        . Si no lo subes, los reels usan los lineamientos de diseño.
+      </p>
 
       {(clientError || save.isError) && <Alert>{clientError ?? errorMessage(save.error)}</Alert>}
 

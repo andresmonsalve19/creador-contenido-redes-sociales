@@ -27,7 +27,7 @@ export function CredentialsForm({ credentials, onDone }: CredentialsFormProps) {
   });
 
   const filled = Object.fromEntries(Object.entries(values).filter(([, value]) => value.trim()));
-  const missing = credentials.some((c) => !c.configured && !filled[c.key]);
+  const missing = credentials.some((c) => !c.optional && !c.configured && !filled[c.key]);
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
@@ -80,6 +80,9 @@ function SecretField({ credential, value, onChange }: SecretFieldProps) {
       <label htmlFor={id} className={styles.secretLabel}>
         {credential.label}
         {credential.configured && <span className={styles.ok}>Configurada</span>}
+        {!credential.configured && credential.optional && (
+          <span className={styles.optional}>Opcional</span>
+        )}
       </label>
       <p id={`${id}-desc`} className={styles.secretDescription}>
         {credential.description}{' '}

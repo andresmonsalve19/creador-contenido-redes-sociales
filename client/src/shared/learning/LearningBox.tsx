@@ -6,25 +6,41 @@ import { Actions, Button } from '../ui/Button';
 import { TextArea } from '../ui/TextArea';
 import styles from './LearningBox.module.css';
 
+export type ContentKind = 'image' | 'video';
+type RuleCategory = ContentKind | 'general';
+
+interface LearningRule {
+  text: string;
+  category: RuleCategory;
+}
+
 interface LearningResponse {
-  rules: string[];
+  rules: LearningRule[];
 }
 
 interface SaveResponse extends LearningResponse {
-  added: string[];
+  added: LearningRule[];
 }
+
+const CATEGORY_LABEL: Record<RuleCategory, string> = {
+  image: 'Imágenes',
+  video: 'Video',
+  general: 'General',
+};
 
 const learningKey = ['learning'] as const;
 
 interface LearningBoxProps {
   textModel: string | null;
+  /** Formato sobre el que se comenta; la IA decide si la regla es de ese formato o general. */
+  kind: ContentKind;
 }
 
 /**
  * Comentarios del usuario sobre lo generado. La IA los convierte en reglas claras que se guardan en
  * learning.md y se consultan antes de cada generación futura.
  */
-export function LearningBox({ textModel }: LearningBoxProps) {
+export function LearningBox({ textModel, kind }: LearningBoxProps) {
   const queryClient = useQueryClient();
   const [feedback, setFeedback] = useState('');
 
@@ -37,7 +53,7 @@ export function LearningBox({ textModel }: LearningBoxProps) {
     mutationFn: (text: string) =>
       api<SaveResponse>('/learning', {
         method: 'POST',
-        json: { textModel, feedback: text },
+        json: { textModel, feedback: text, kind },
       }),
     onSuccess: ({ rules }) => {
       setFeedback('');
@@ -88,7 +104,10 @@ export function LearningBox({ textModel }: LearningBoxProps) {
                 Aprendido y guardado:
                 <ul className={styles.added}>
                   {save.data.added.map((rule) => (
-                    <li key={rule}>{rule}</li>
+                    <li key={rule.text}>
+                      <span className={styles.category}>{CATEGORY_LABEL[rule.category]}</span>{' '}
+                      {rule.text}
+                    </li>
                   ))}
                 </ul>
               </>
@@ -115,13 +134,16 @@ export function LearningBox({ textModel }: LearningBoxProps) {
           <summary>Lo que la app ya aprendió ({rules.length})</summary>
           <ul className={styles.rules}>
             {rules.map((rule, index) => (
-              <li key={`${index}-${rule}`}>
-                <span>{rule}</span>
+              <li key={`${index}-${rule.text}`}>
+                <span>
+                  <span className={styles.category}>{CATEGORY_LABEL[rule.category]}</span>{' '}
+                  {rule.text}
+                </span>
                 <button
                   type="button"
                   onClick={() => remove.mutate(index)}
                   disabled={remove.isPending}
-                  aria-label={`Eliminar: ${rule}`}
+                  aria-label={`Eliminar: ${rule.text}`}
                 >
                   Eliminar
                 </button>

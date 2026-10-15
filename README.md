@@ -3,11 +3,12 @@
 Aplicación web que genera publicaciones de Instagram con inteligencia artificial respetando la
 identidad de una empresa: qué hace, cómo se ve (colores, tipografías, estilo) y su logo. Escribes
 una temática (o la pides a la IA) y la plataforma crea los prompts, las imágenes y el texto de la
-publicación, listos para descargar y publicar.
+publicación, listos para descargar y publicar. También crea **reels con avatar** (video) usando
+HeyGen, con el guion escrito por la IA según la marca.
 
 - **Frontend:** React 19 + TypeScript + Vite
 - **Backend:** Node.js + Express 5 + TypeScript
-- **IA:** Google Gemini (texto e imágenes)
+- **IA:** Google Gemini (texto e imágenes) y HeyGen (video con avatar, opcional)
 
 ---
 
@@ -20,17 +21,18 @@ publicación, listos para descargar y publicar.
 5. [Instalación paso a paso](#instalación-paso-a-paso)
 6. [Archivos de marca](#archivos-de-marca)
 7. [Guía de uso](#guía-de-uso)
-8. [Variables de entorno](#variables-de-entorno)
-9. [Scripts disponibles](#scripts-disponibles)
-10. [Arquitectura](#arquitectura)
-11. [Cómo se generan los prompts](#cómo-se-generan-los-prompts)
-12. [API del servidor](#api-del-servidor)
-13. [Modelos y costos](#modelos-y-costos)
-14. [Seguridad y privacidad](#seguridad-y-privacidad)
-15. [Cómo extender el proyecto](#cómo-extender-el-proyecto)
-16. [Calidad del código](#calidad-del-código)
-17. [Solución de problemas](#solución-de-problemas)
-18. [Hoja de ruta](#hoja-de-ruta)
+8. [Reels con HeyGen](#reels-con-heygen)
+9. [Variables de entorno](#variables-de-entorno)
+10. [Scripts disponibles](#scripts-disponibles)
+11. [Arquitectura](#arquitectura)
+12. [Cómo se generan los prompts](#cómo-se-generan-los-prompts)
+13. [API del servidor](#api-del-servidor)
+14. [Modelos y costos](#modelos-y-costos)
+15. [Seguridad y privacidad](#seguridad-y-privacidad)
+16. [Cómo extender el proyecto](#cómo-extender-el-proyecto)
+17. [Calidad del código](#calidad-del-código)
+18. [Solución de problemas](#solución-de-problemas)
+19. [Hoja de ruta](#hoja-de-ruta)
 
 ---
 
@@ -64,8 +66,9 @@ quieren consistencia visual sin diseñar cada pieza desde cero.
 - **Cinco proporciones:** 4:5, 1:1, 3:4, 9:16 y 16:9.
 - **Llamado a la acción elegible:** lista de 17 opciones ("Más información", "Contáctanos",
   "Solicita tu diagnóstico"…) o una frase propia.
-- **Pie de página en cada imagen** con el correo y el sitio web (editables; por defecto
-  `info@nubetic.com.co` y `www.nubetic.com.co`).
+- **Pie de página en cada imagen** con el correo y el sitio web que escribas en el paso 2 (por
+  ejemplo `contacto@empresa-ejemplo.com` y `www.empresa-ejemplo.com`). Se recuerdan en el navegador
+  para las próximas publicaciones.
 - **Sugerencias de temática con IA**, según lo que hace la empresa.
 - **Prompts revisables:** puedes editar cada prompt antes de generar.
 - **Ajustes por imagen:** en cada tarjeta puedes dejar comentarios y regenerar la imagen con esos
@@ -266,17 +269,30 @@ Degradados saturados, stock genérico…
 Idealmente con fondo transparente (PNG) y buena resolución. Se envía como imagen de referencia a la
 IA en cada generación.
 
+### 4. Lineamientos de video (`.md`, opcional, hasta 300 KB)
+
+Cómo deben ser los reels de la empresa. Se sube como cuarta tarjeta (opcional) en **Carga tu marca**
+y se reemplaza desde **Inicio → Actualizar marca**. En esa misma pantalla puedes **descargar la
+plantilla** genérica ([`plantillas/lineamientos-video.md`](plantillas/lineamientos-video.md)), con
+estas secciones: estilo de los videos, estructura del guion, forma de hablar a cámara, frases y
+palabras (obligatorias, preferidas y prohibidas), presentador o avatar, fondos, subtítulos, música,
+llamado a la acción y temas que nunca se tratan. Si no lo subes, los reels usan los lineamientos de
+diseño.
+
 Los archivos quedan guardados en `server/data/brand/` y puedes reemplazarlos cuando quieras desde
 **Inicio → Actualizar marca**.
 
 ## Guía de uso
 
-1. **Tipo de publicación:** elige _Post en el feed_ (Reel aparece como "Próximamente").
+1. **Tipo de publicación:** elige _Post en el feed_ o _Reel_ (ver [Reels con HeyGen](#reels-con-heygen)).
 2. **Configuraciones iniciales:**
    - Modelo de texto y modelo de imagen (uno al lado del otro; apilados en móvil), con su precio.
    - **Llamado a la acción:** elige uno de la lista o escribe el tuyo.
-   - **Datos de contacto:** correo y sitio web que irán en el pie de cada imagen y en el texto. Puedes
-     cambiarlos, restablecerlos o dejarlos vacíos.
+   - **Datos de contacto:** correo, sitio web y WhatsApp (con indicativo, p. ej.
+     `+57 300 000 0000`). Cada uno tiene la casilla **Incluir en esta publicación**: solo los
+     marcados y con valor van en el pie de las imágenes, en el cierre de los reels y en el texto de
+     la publicación (`📩`, `🌐`, `💬 WhatsApp`), que el servidor agrega exactos antes de los
+     hashtags. Los tres se guardan en el navegador para la próxima vez, aunque estén desmarcados.
 3. **Formato y temática:**
    - Imagen única o carrusel (con la cantidad de imágenes).
    - Proporción: 4:5, 1:1, 3:4, 9:16 o 16:9.
@@ -290,6 +306,130 @@ Los archivos quedan guardados en `server/data/brand/` y puedes reemplazarlos cua
    - Al final, el campo **Comentarios y sugerencias** guarda lo aprendido para futuras
      publicaciones. Puedes ver y eliminar esas reglas desde ahí.
 
+## Reels con HeyGen
+
+El módulo de reels sigue los mismos pasos que el de imágenes. Es **opcional**: sin la key de HeyGen,
+las imágenes funcionan igual y Reels muestra "Configura HeyGen para usar este módulo".
+
+### Configuración
+
+1. Crea una API key en <https://app.heygen.com/developers/api> (usa la cuenta corporativa aprobada).
+   La API de HeyGen es de prepago: necesitas saldo en la billetera de la cuenta.
+2. En **Actualizar marca → Credenciales**, pega la key en "API key de HeyGen (opcional)". Se valida
+   con una consulta de solo lectura (`GET /v3/users/me`) y se guarda en `.env`.
+3. Comprueba la conexión sin gastar saldo: `npm run probar:heygen` (solo lista avatares).
+4. En **Actualizar marca → Video** define la configuración técnica:
+   - Avatar por defecto y avatares favoritos (se eligen de la lista de HeyGen, con vista previa).
+   - Idioma, voz por defecto (con muestra de audio) y velocidad.
+   - Fondo por defecto: el original del avatar, un color de la marca, una imagen subida o una
+     imagen generada con IA en cada reel.
+   - Subtítulos, formato (9:16, 4:5, 1:1 o 16:9) y duración por defecto.
+   - **Reglas de cumplimiento** (opcional): tienen prioridad sobre todo lo demás.
+   - **Autorización de imagen:** los avatares que pueden representar a una persona real (digital
+     twin o photo avatar) exigen marcar "Cuento con autorización escrita de esta persona para usar
+     su imagen y voz", con nombre y fecha. Sin ella, el servidor rechaza ese avatar. HeyGen exige
+     además su propio consentimiento para los digital twins.
+
+### Flujo
+
+1. **Tipo de publicación:** Reel.
+2. **Configuraciones iniciales:** modelo de texto para el guion, uno o varios avatares, voz,
+   llamado a la acción y datos de contacto (precargados con los últimos usados).
+3. **Formato y temática:** duración (15, 30, 45 o 60 s), proporción, número de escenas (1 a 5),
+   modo de avatar (el mismo en todas o distinto por escena), fondo, subtítulos y temática (escrita
+   o con **Sugerir con IA**).
+4. **Guion y video:**
+   - La IA escribe un guion por escena: gancho en los primeros 3 segundos, desarrollo y cierre con
+     el llamado a la acción, más el texto de la publicación con hashtags (el contacto lo agrega el
+     servidor). Todo es editable: texto hablado, indicaciones de subtítulo, avatar y voz por escena.
+   - Duración estimada por escena (2,5 palabras por segundo, ajustable) y alerta si el guion se
+     pasa de la duración elegida.
+   - Si algo de la temática, los lineamientos o los aprendizajes contradice las reglas de
+     cumplimiento, gana el cumplimiento y la pantalla avisa qué se ignoró.
+   - Si el fondo es "generado", se crea con Nano Banana (Gemini), sin texto ni personas.
+   - **Aprobación:** duración estimada, saldo de HeyGen y aviso de que el contenido se envía a
+     HeyGen y a Google. **Nada se envía a HeyGen sin marcar la confirmación y pulsar "Generar
+     video".**
+   - **Progreso:** pendiente, procesando, completado o error, en vivo. Puedes salir de la página: el
+     servidor sigue el render y lo deja en "Reels anteriores".
+   - **Resultado:** reproductor, **Descargar MP4**, **Copiar texto**, **Duplicar** (mismo guion para
+     cambiar avatar, voz, fondo o texto) y **Ajustar con comentarios** (reescribe el guion y pide
+     una nueva aprobación).
+
+### Estilo del video
+
+En **Formato y temática** eliges el estilo:
+
+- **Edición HeyGen (como en la web)** (por defecto): usa el **Video Agent** de HeyGen
+  (`POST /v3/video-agents`), el mismo que arma los videos en la web: tomas distintas, gráficos y
+  textos animados, imágenes, música suave y transiciones.
+  - Gemini escribe el guion con tus reglas en el formato que pide la guía de HeyGen: cada escena
+    con tiempos, **indicación de toma**, **texto en pantalla** (el gancho en grande en la primera)
+    y el texto hablado exacto, más un **párrafo de estilo** (paleta HEX, tipografías, movimiento,
+    música, reglas de marca). Todo es editable.
+  - Puedes elegir un **kit de marca** de HeyGen (colores, fuentes y logo). Sin kit, se adjunta tu
+    logo real. La app avisa si eliges el kit de ejemplo de HeyGen.
+  - **Crear el kit por API** (Actualizar marca → Video → "Crear kit de marca desde tu sitio web"):
+    HeyGen importa el sitio público (`POST /v3/brand-kits`), la app espera a que termine, propone
+    los colores exactos de tus lineamientos por rol (principal, secundario, terciario, acento), te
+    deja elegir el logo principal entre los importados y guarda con `PATCH /v3/brand-kits/{id}`.
+    La API no permite subir un logo ni fuentes propias: eso se completa en la web de HeyGen.
+  - Antes de enviar puedes ver **exactamente el prompt** que recibirá HeyGen.
+  - Se envía en modo revisión (`mode: "chat"`): HeyGen prepara un **storyboard** y la app lo
+    muestra con el mensaje del agente. Puedes **pedir cambios** o **aprobar y generar** (con
+    confirmación). El video se renderiza solo después de aprobar.
+  - HeyGen no publica el precio del Video Agent por API ni si el storyboard consume créditos:
+    revísalo en tu panel después de la primera prueba.
+
+- **Simple:** solo el presentador hablando a cámara.
+- **Escenas compuestas por la app**:
+  - **Imágenes de apoyo:** con 3 o más escenas, las del medio se alternan con imágenes a pantalla
+    completa mientras la misma voz sigue narrando (b-roll). Gemini describe cada imagen y Nano
+    Banana la genera con la paleta de la marca, sin texto ni logos. Se revisan y regeneran antes de
+    aprobar.
+  - **Tarjetas de marca:** apertura con el logo (2 s) y cierre con el logo, el llamado a la acción,
+    el sitio web y el correo (3 s). Las compone la app con `sharp`: el logo real sin alterar y los
+    textos exactos, sobre el color de la marca (el de la configuración de video o el primer HEX de
+    los lineamientos). Su tiempo se descuenta del guion hablado.
+  - **Tomas variadas** (opcional): si el avatar de stock tiene otros looks en su grupo (otra pose o
+    vestuario), cada vez que vuelve a aparecer usa uno distinto.
+  - **Gestos:** cada escena del presentador trae gestos sugeridos; se envían como `motion_prompt`
+    solo si el avatar los admite (photo avatars, o avatares de video con Avatar V).
+
+La app elige para cada avatar un motor de render compatible (`supported_api_engines`): Avatar IV si
+lo admite; si no, Avatar III (por ejemplo, la mayoría de avatares de estudio de stock) o Avatar V.
+
+Orden de prioridad al escribir guiones: 1) reglas de cumplimiento, 2) `lineamientos-video.md`,
+3) `empresa.md` y lineamientos de diseño, 4) reglas aprendidas de video o generales, 5) temática.
+Todo ese contenido va delimitado en el prompt como datos, nunca como instrucciones.
+
+### Cómo funciona por dentro
+
+- API v3 de HeyGen: un video multiescena (`POST /v3/videos` con `type: "studio"`), estado con
+  `GET /v3/videos/{id}`, avatares con `GET /v3/avatars/looks`, voces con `GET /v3/voices`, fondos
+  de imagen subidos con `POST /v3/assets` y saldo con `GET /v3/users/me`.
+- **Sin webhooks** (la app es local): el servidor consulta el estado cada 5 s, 10 s, 20 s y luego
+  cada 30 s, hasta `HEYGEN_POLL_TIMEOUT_MIN` minutos.
+- **Descarga inmediata** al completar (las URLs de HeyGen expiran) a
+  `server/data/reels/<AAAA-MM>/<fecha>-<titulo>-<id>.mp4`.
+- **Historial** en `server/data/reels/history.json` con la especificación completa de cada video
+  (guion, avatares, voz, fondo, formato, id del proveedor, estado y archivo). Es lo que permite
+  duplicar.
+- **Reintentos seguros:** solo se reintentan los errores reintentables (límite de tasa, caídas). La
+  creación usa la cabecera `Idempotency-Key`, y un render que ya existe nunca se vuelve a crear.
+- **Concurrencia:** máximo 2 renders a la vez; el resto espera en cola. Si el servidor se reinicia,
+  retoma los renders en curso.
+- Las reglas aprendidas tienen categoría (imagen, video o general) y cada módulo usa solo las suyas
+  y las generales.
+
+### Costos
+
+HeyGen cobra la API por segundo de video según el motor y el tipo de avatar, pero **no publica esas
+tarifas en su documentación** (solo en el panel de la API, con sesión iniciada). Por eso la app no
+estima el costo en dólares: antes de generar muestra la duración estimada y el **saldo** de la
+cuenta. Consulta la tarifa vigente en tu panel de HeyGen. Para la primera prueba, usa un avatar de
+stock, 15 segundos y una sola escena.
+
 ## Variables de entorno
 
 Se definen en `.env` (raíz del proyecto). Ver [.env.example](.env.example).
@@ -297,6 +437,8 @@ Se definen en `.env` (raíz del proyecto). Ver [.env.example](.env.example).
 | Variable         | Obligatoria | Por defecto | Descripción                                                  |
 | ---------------- | :---------: | ----------- | ------------------------------------------------------------ |
 | `GEMINI_API_KEY` |     Sí      | —           | API key de Google Gemini. También se puede cargar desde la app. |
+| `HEYGEN_API_KEY` |     No      | —           | API key de HeyGen. Habilita los reels. También se puede cargar desde la app. |
+| `HEYGEN_POLL_TIMEOUT_MIN` | No | `30`       | Minutos máximos esperando a que HeyGen termine un video.     |
 | `PORT`           |     No      | `3001`      | Puerto del servidor.                                         |
 | `HOST`           |     No      | `127.0.0.1` | Dirección en la que escucha el servidor.                     |
 | `NODE_ENV`       |     No      | `development` | Usa `production` para servir el cliente compilado.         |
@@ -312,6 +454,8 @@ Se ejecutan desde la raíz del proyecto.
 | `npm start`         | Inicia el servidor compilado.                                 |
 | `npm run typecheck` | Verifica los tipos de TypeScript en cliente y servidor.       |
 | `npm run lint`      | Ejecuta ESLint (incluye la regla de arquitectura modular).    |
+| `npm test`          | Pruebas del servidor con respuestas simuladas de HeyGen (no usan la key ni gastan saldo). |
+| `npm run probar:heygen` | Verifica la conexión con HeyGen listando avatares (solo lectura). |
 | `npm run format`    | Da formato al código con Prettier.                            |
 
 ## Arquitectura
@@ -330,24 +474,29 @@ mismas tres capas:
 ├── client/                         # Interfaz (React + Vite)
 │   └── src/
 │       ├── core/                   # main, App, layout (barra, pie), registro de módulos, Inicio, paso 1
-│       ├── shared/                 # api, setup, models, topic, learning, ui, styles, hooks
+│       ├── shared/                 # api, setup, models, topic, learning, publishing, video, ui…
 │       └── modules/
 │           ├── images/             # asistente de imágenes (pasos, galería, estado, API)
-│           └── reels/              # esqueleto "Próximamente"
+│           └── reels/              # asistente de reels (pasos, guion, aprobación, historial)
 ├── server/                         # API (Express)
-│   ├── data/                       # (se crea al usar la app, no se versiona) marca y aprendizajes
+│   ├── data/                       # (se crea al usar la app, no se versiona) marca, aprendizajes y reels
+│   ├── scripts/                    # probarHeygen.ts (npm run probar:heygen)
+│   ├── test/                       # pruebas con respuestas simuladas de HeyGen
 │   └── src/
 │       ├── core/                   # arranque, registro de módulos, manejo de errores
 │       ├── shared/
 │       │   ├── ai/                 # proveedores (Gemini), modelos, sugerencia de temática
-│       │   ├── brandContext/       # guardado de empresa.md, lineamientos.md y logo
+│       │   ├── brandContext/       # empresa.md, lineamientos.md, lineamientos-video.md y logo
 │       │   ├── credentials/        # lectura/escritura de .env y validación de keys
-│       │   ├── learning/           # learning.md: reglas aprendidas de los comentarios
+│       │   ├── learning/           # learning.md: reglas aprendidas (imagen, video o general)
+│       │   ├── publishing/         # contacto y armado del texto de la publicación
+│       │   ├── video/              # proveedor de video (HeyGen), configuración y autorizaciones
 │       │   ├── config/             # entorno, rutas y catálogo de modelos con precios
 │       │   └── http/               # errores, validación, restricción a localhost
 │       └── modules/
 │           ├── images/             # prompts, generación y ajuste de imágenes
-│           └── reels/              # esqueleto
+│           └── reels/              # guion, cola de renders, polling, descarga e historial
+├── plantillas/                     # plantilla genérica de lineamientos de video
 ├── .env.example                    # plantilla de variables de entorno
 ├── eslint.config.js                # reglas de lint y de límites entre módulos
 └── skills-lock.json / .agents/     # skills de Claude Code usadas en el desarrollo (opcional)
@@ -405,7 +554,7 @@ Todas las rutas cuelgan de `/api`. Las marcadas con 🔒 solo aceptan peticiones
 | `POST /api/setup/credentials` 🔒 | Valida con el proveedor y guarda la API key en `.env`.          |
 | `GET /api/context`               | Datos de los archivos de marca cargados.                        |
 | `GET /api/context/logo`          | Imagen del logo.                                                |
-| `PUT /api/context` 🔒            | Sube o reemplaza empresa, lineamientos y logo.                  |
+| `PUT /api/context` 🔒            | Sube o reemplaza empresa, lineamientos, lineamientos de video y logo. |
 | `GET /api/models?kind=text\|image` | Modelos disponibles con precio y recomendado.                 |
 | `POST /api/topic-suggestions`    | Sugiere temáticas con IA.                                       |
 | `GET /api/learning`              | Lista las reglas aprendidas.                                    |
@@ -414,6 +563,29 @@ Todas las rutas cuelgan de `/api`. Las marcadas con 🔒 solo aceptan peticiones
 | `POST /api/images/prompts`       | Crea los prompts, el concepto y el texto de la publicación.     |
 | `POST /api/images/revise-prompt` | Reescribe el prompt de una imagen según comentarios.            |
 | `POST /api/images/generate`      | Genera una imagen (o la ajusta con comentarios).                |
+| `GET /api/video/settings`        | Configuración de video de la marca.                             |
+| `PUT /api/video/settings` 🔒     | Guarda la configuración de video (valida las autorizaciones).   |
+| `GET /api/video/background`      | Imagen de fondo de la marca.                                    |
+| `PUT /api/video/background` 🔒   | Sube la imagen de fondo (PNG o JPG).                            |
+| `GET /api/video/template`        | Descarga la plantilla de lineamientos de video.                 |
+| `GET /api/video/avatars`         | Avatares de HeyGen (caché de 5 minutos).                        |
+| `GET /api/video/voices?language=` | Voces de HeyGen (caché de 5 minutos).                          |
+| `GET /api/video/account`         | Saldo de la cuenta de HeyGen.                                   |
+| `GET /api/reels/avatars`, `GET /api/reels/voices` | Igual que los de `/api/video`.                  |
+| `POST /api/reels/script`         | Escribe el guion por escena y el texto de la publicación.       |
+| `POST /api/reels/revise-script`  | Reescribe el guion según comentarios.                           |
+| `POST /api/reels/estimate`       | Duración estimada y saldo (sin costo en USD; ver Costos).       |
+| `POST /api/reels/background` 🔒  | Genera un fondo con IA para el reel.                            |
+| `GET /api/reels/backgrounds/:id` | Imagen de un fondo generado.                                    |
+| `POST /api/reels/generate` 🔒    | Crea el video en HeyGen (exige `confirmed: true`). En edición HeyGen, prepara el storyboard. |
+| `POST /api/reels/agent/preview`  | Prompt exacto que se enviaría al Video Agent (no envía nada).   |
+| `POST /api/reels/jobs/:id/agent-message` 🔒 | Pedir cambios al storyboard o aprobarlo y generar.   |
+| `GET /api/video/brand-kits`      | Kits de marca de la cuenta de HeyGen.                           |
+| `GET /api/reels/jobs`            | Historial de videos.                                            |
+| `GET /api/reels/jobs/:id`        | Estado de un video.                                             |
+| `GET /api/reels/jobs/:id/video`  | El MP4 descargado (`?download=1` para descargarlo).             |
+| `POST /api/reels/jobs/:id/duplicate` 🔒 | Devuelve la especificación de un video para volver a generarlo. |
+| `DELETE /api/reels/jobs/:id` 🔒  | Borra un video terminado y su archivo.                          |
 
 ## Modelos y costos
 
@@ -439,8 +611,13 @@ imágenes; el costo del texto es muy pequeño en comparación.
 - El servidor escucha en `127.0.0.1` por defecto, y los endpoints que escriben credenciales o archivos
   solo aceptan peticiones locales.
 - Los archivos de marca y los aprendizajes se guardan en `server/data/` (también ignorado por Git).
-- Lo que generas se envía a Google Gemini para procesarse: no subas información confidencial que no
-  quieras compartir con el proveedor.
+- Lo que generas se envía a Google Gemini para procesarse, y en los reels, el guion, los avatares,
+  la voz y los fondos se envían a HeyGen: no subas información confidencial que no quieras compartir
+  con los proveedores.
+- `HEYGEN_API_KEY` vive solo en `.env` y en el servidor. Los errores y los registros nunca incluyen
+  las keys, las cabeceras ni el contenido de los archivos de marca.
+- Generar, duplicar y borrar videos, y guardar la configuración de video, solo se permite desde la
+  misma máquina. Los videos, el historial y las autorizaciones se guardan en `server/data/`.
 - Esta aplicación **no tiene autenticación de usuarios**: está pensada para uso local o en una red de
   confianza. Si la publicas en internet, añade autenticación y un proxy inverso con HTTPS antes.
 
@@ -466,14 +643,22 @@ imágenes; el costo del texto es muy pequeño en comparación.
 ### Cambiar modelos, precios o llamados a la acción
 
 - Modelos y precios: [`modelCatalog.ts`](server/src/shared/config/modelCatalog.ts).
-- Llamados a la acción y contacto por defecto: [`types.ts`](client/src/modules/images/types.ts)
-  (`CTA_OPTIONS`, `DEFAULT_CONTACT`).
+- Llamados a la acción: [`cta.ts`](client/src/shared/publishing/cta.ts) (`CTA_OPTIONS`).
+- Contacto recordado: [`contactStorage.ts`](client/src/shared/publishing/contactStorage.ts).
+
+### Agregar otro proveedor de video
+
+1. Implementa la interfaz `VideoProvider` ([`video/types.ts`](server/src/shared/video/types.ts)),
+   como [`heygen/client.ts`](server/src/shared/video/heygen/client.ts).
+2. Regístralo en [`video/index.ts`](server/src/shared/video/index.ts) y declara su credencial en
+   `shared/credentials/definitions.ts` y en `.env.example`.
 
 ## Calidad del código
 
 ```bash
 npm run lint       # ESLint + reglas de límites entre módulos
-npm run typecheck  # TypeScript estricto en cliente y servidor
+npm run typecheck  # TypeScript estricto en cliente, servidor y pruebas
+npm test           # pruebas con respuestas simuladas de HeyGen
 npm run build      # compilación completa
 ```
 
@@ -491,6 +676,12 @@ TypeScript está en modo `strict` (con `noUncheckedIndexedAccess`). Prettier def
 | Las imágenes tienen errores en el texto   | Los modelos de imagen fallan con textos largos. Reduce el texto en el prompt, usa el botón de comentarios en la tarjeta o guarda una regla en "Comentarios y sugerencias". |
 | `Node.js` incompatible al instalar        | Actualiza a Node 20.19 o superior (`node -v`).                                                      |
 | Cambié `.env` a mano y no se refleja      | Reinicia `npm run dev`.                                                                             |
+| Reels dice "Configura HeyGen"             | Falta `HEYGEN_API_KEY`. Agrégala en Actualizar marca → Credenciales y prueba con `npm run probar:heygen`. |
+| "Saldo insuficiente en HeyGen"            | Recarga la billetera en el panel de la API de HeyGen. El video no se creó.                          |
+| HeyGen rechaza el fondo del avatar        | Algunos avatares de video no permiten recortar su fondo. Usa "Fondo original del avatar".           |
+| "Falta la autorización de imagen"         | Ese avatar es un digital twin o photo avatar: registra la autorización en Actualizar marca → Video. |
+| El video quedó con error "timeout"        | HeyGen tardó más de `HEYGEN_POLL_TIMEOUT_MIN` minutos. Revisa el video en tu cuenta de HeyGen o sube el valor. |
+| No se ven las vistas previas de avatares  | Las sirve el CDN de HeyGen: revisa tu conexión o el bloqueo de contenido externo del navegador.     |
 
 ## Hoja de ruta
 
@@ -498,7 +689,7 @@ TypeScript está en modo `strict` (con `noUncheckedIndexedAccess`). Prettier def
 - [x] Texto de la publicación con contacto y hashtags
 - [x] Ajuste por imagen con comentarios
 - [x] Aprendizaje a partir de comentarios
-- [ ] Módulo de **reels** (video)
+- [x] Módulo de **reels** con avatar (HeyGen)
 - [ ] Soporte para más proveedores de IA (OpenAI, Anthropic)
 - [ ] Autenticación y uso multiusuario
 - [ ] Historial de publicaciones generadas

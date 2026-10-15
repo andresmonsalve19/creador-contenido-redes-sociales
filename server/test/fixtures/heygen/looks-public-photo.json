@@ -1,0 +1,13 @@
+{
+  "data": [
+    {
+      "id": "look_foto_001",
+      "name": "Photo avatar de stock",
+      "avatar_type": "photo_avatar",
+      "preview_image_url": null,
+      "gender": "female"
+    }
+  ],
+  "has_more": false,
+  "next_token": null
+}

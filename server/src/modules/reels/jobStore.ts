@@ -14,9 +14,23 @@ export const BACKGROUNDS_DIR = path.join(REELS_DIR, 'fondos');
  * - completed: descargado en el disco.
  * - failed: error definitivo (ver `error`).
  */
-export const JOB_STATUSES = ['queued', 'pending', 'processing', 'completed', 'failed'] as const;
+export const JOB_STATUSES = [
+  'queued',
+  'drafting',
+  'reviewing',
+  'pending',
+  'processing',
+  'completed',
+  'failed',
+] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
-export const ACTIVE_STATUSES: readonly JobStatus[] = ['queued', 'pending', 'processing'];
+/** Estados que el ejecutor sigue en segundo plano. `reviewing` espera al usuario. */
+export const ACTIVE_STATUSES: readonly JobStatus[] = [
+  'queued',
+  'drafting',
+  'pending',
+  'processing',
+];
 
 export const jobSchema = z.object({
   id: z.uuid(),
@@ -35,6 +49,30 @@ export const jobSchema = z.object({
   file: z.string().nullable(),
   error: z.object({ codigo: z.string(), mensaje: z.string() }).nullable(),
   duplicatedFrom: z.string().nullable(),
+  /** Edición automática (Video Agent): sesión, mensajes del agente y storyboard. */
+  agent: z
+    .object({
+      sessionId: z.string().nullable(),
+      /** Prompt exacto enviado al agente (para auditar y duplicar). */
+      prompt: z.string(),
+      progress: z.number().nullable(),
+      messages: z.array(
+        z.object({
+          role: z.enum(['user', 'model']),
+          content: z.string(),
+          createdAt: z.number().nullable(),
+        }),
+      ),
+      storyboard: z.array(
+        z.object({
+          id: z.string(),
+          type: z.string(),
+          url: z.string().nullable(),
+          thumbnailUrl: z.string().nullable(),
+        }),
+      ),
+    })
+    .nullish(),
 });
 export type Job = z.infer<typeof jobSchema>;
 

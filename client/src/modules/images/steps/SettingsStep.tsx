@@ -3,9 +3,10 @@ import { ModelSelector } from '../../../shared/models/ModelSelector';
 import { useModels } from '../../../shared/models/useModels';
 import { Actions, Button } from '../../../shared/ui/Button';
 import { Section } from '../../../shared/ui/Page';
-import { Select } from '../../../shared/ui/Select';
-import { TextField } from '../../../shared/ui/TextField';
-import { CTA_OPTIONS, DEFAULT_CONTACT, type Contact } from '../types';
+import { validateContact, type Contact } from '../../../shared/publishing/contact';
+import { ContactFields } from '../../../shared/publishing/ContactFields';
+import { ctaChoiceFrom, ctaFrom } from '../../../shared/publishing/cta';
+import { CtaField } from '../../../shared/publishing/CtaField';
 import styles from '../images.module.css';
 
 interface SettingsStepProps {
@@ -22,23 +23,6 @@ interface SettingsStepProps {
   }) => void;
 }
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const CUSTOM_CTA = '__custom__';
-
-const CTA_SELECT_OPTIONS = [
-  ...CTA_OPTIONS.map((option) => ({ value: option, label: option })),
-  { value: CUSTOM_CTA, label: 'Otro (escribir el mío)…' },
-];
-
-const isPresetCta = (cta: string) => (CTA_OPTIONS as readonly string[]).includes(cta);
-
-function validateContact({ email, website }: Contact) {
-  return {
-    email: email.trim() && !EMAIL.test(email.trim()) ? 'Escribe un correo válido.' : null,
-    website: /\s/.test(website.trim()) ? 'El sitio web no puede tener espacios.' : null,
-  };
-}
-
 export function SettingsStep({
   textModel,
   imageModel,
@@ -52,15 +36,14 @@ export function SettingsStep({
   const [text, setText] = useState(textModel);
   const [image, setImage] = useState(imageModel);
   const [contact, setContact] = useState(initialContact);
-  const [ctaChoice, setCtaChoice] = useState(isPresetCta(initialCta) ? initialCta : CUSTOM_CTA);
-  const [customCta, setCustomCta] = useState(isPresetCta(initialCta) ? '' : initialCta);
+  const [ctaChoice, setCtaChoice] = useState(() => ctaChoiceFrom(initialCta));
 
   // Sin elección explícita se usa el modelo recomendado.
   const selectedText = text ?? texts.data?.recommendedId ?? null;
   const selectedImage = image ?? images.data?.recommendedId ?? null;
-  const cta = (ctaChoice === CUSTOM_CTA ? customCta : ctaChoice).trim();
+  const cta = ctaFrom(ctaChoice);
   const errors = validateContact(contact);
-  const valid = !errors.email && !errors.website && cta.length >= 2;
+  const valid = !errors.email && !errors.website && !errors.whatsapp && cta.length >= 2;
 
   return (
     <Section
@@ -91,66 +74,17 @@ export function SettingsStep({
           </p>
         </div>
 
-        <div className={`${styles.group} ${styles.narrow}`}>
-          <h3>Llamado a la acción</h3>
-          <Select
-            label="¿Qué quieres que haga tu audiencia?"
-            options={CTA_SELECT_OPTIONS}
-            value={ctaChoice}
-            onChange={setCtaChoice}
-            details="Se usa en la última imagen del carrusel (o en la imagen única) y en el cierre del texto."
-          />
-          {ctaChoice === CUSTOM_CTA && (
-            <TextField
-              label="Tu llamado a la acción"
-              value={customCta}
-              onChange={(event) => setCustomCta(event.target.value)}
-              maxLength={80}
-              placeholder="Ej.: Agenda tu cita hoy"
-              error={customCta.trim().length < 2 ? 'Escribe el llamado a la acción.' : null}
-            />
-          )}
-        </div>
+        <CtaField
+          value={ctaChoice}
+          onChange={setCtaChoice}
+          details="Se usa en la última imagen del carrusel (o en la imagen única) y en el cierre del texto."
+        />
 
-        <div className={styles.group}>
-          <h3>Datos de contacto</h3>
-          <div className={styles.contactFields}>
-            <TextField
-              label="Correo electrónico"
-              type="email"
-              inputMode="email"
-              autoComplete="off"
-              value={contact.email}
-              onChange={(event) => setContact({ ...contact, email: event.target.value })}
-              error={errors.email}
-            />
-            <TextField
-              label="Sitio web"
-              type="text"
-              inputMode="url"
-              autoComplete="off"
-              value={contact.website}
-              onChange={(event) => setContact({ ...contact, website: event.target.value })}
-              error={errors.website}
-            />
-          </div>
-          <div className={styles.inlineAction}>
-            <Button
-              variant="ghost"
-              onClick={() => setContact(DEFAULT_CONTACT)}
-              disabled={
-                contact.email === DEFAULT_CONTACT.email &&
-                contact.website === DEFAULT_CONTACT.website
-              }
-            >
-              Restablecer valores predeterminados
-            </Button>
-          </div>
-          <p className={styles.fine}>
-            Van en el pie de página de cada imagen, destacados en la última, y al final del texto,
-            antes de los hashtags. Déjalos vacíos para no incluirlos.
-          </p>
-        </div>
+        <ContactFields
+          value={contact}
+          onChange={setContact}
+          note='Los datos marcados van en el pie de página de cada imagen, destacados en la última, y al final del texto, antes de los hashtags. Los tres se guardan para tus próximas publicaciones; desmarca "Incluir" en los que no quieras mostrar esta vez.'
+        />
       </div>
 
       <Actions>

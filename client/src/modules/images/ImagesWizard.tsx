@@ -2,6 +2,7 @@ import { useEffect, useReducer } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Page } from '../../shared/ui/Page';
 import { Stepper } from '../../shared/ui/Stepper';
+import { loadContact, saveContact } from '../../shared/publishing/contactStorage';
 import { IMAGE_FLOW_STEPS } from './meta';
 import { FormatTopicStep } from './steps/FormatTopicStep';
 import { PromptReviewStep } from './steps/PromptReviewStep';
@@ -11,7 +12,10 @@ import styles from './images.module.css';
 
 export default function ImagesWizard() {
   const navigate = useNavigate();
-  const [state, dispatch] = useReducer(wizardReducer, initialWizardState);
+  const [state, dispatch] = useReducer(wizardReducer, initialWizardState, (initial) => ({
+    ...initial,
+    contact: loadContact(),
+  }));
 
   // Cada paso empieza arriba, no donde quedó el botón del paso anterior.
   useEffect(() => {
@@ -40,6 +44,7 @@ export default function ImagesWizard() {
             cta={state.cta}
             onBack={() => navigate('/crear')}
             onContinue={(settings) => {
+              saveContact(settings.contact);
               dispatch({ type: 'setSettings', ...settings });
               dispatch({ type: 'goTo', step: 2 });
             }}

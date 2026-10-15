@@ -18,7 +18,14 @@
 import { z } from 'zod';
 import { VideoProviderError } from '../errors.js';
 import type {
+  AgentResource,
+  AgentSession,
+  AgentSessionRequest,
+  AgentStatus,
   AvatarType,
+  BrandKit,
+  BrandKitDetail,
+  BrandKitUpdate,
   RenderRequest,
   RenderState,
   SceneBackground,
@@ -27,13 +34,20 @@ import type {
   VideoProvider,
   VideoVoice,
 } from '../types.js';
+import { BRAND_COLOR_ROLES } from '../types.js';
 
 const BASE_URL = 'https://api.heygen.com';
 const REQUEST_TIMEOUT_MS = 30_000;
 const PAGE_SIZE_LOOKS = 50;
 const PAGE_SIZE_VOICES = 100;
-/** Tope de páginas al listar: el catálogo público es grande y basta con una muestra amplia. */
-const MAX_PUBLIC_PAGES = 4;
+/**
+ * Topes de páginas al listar (el listado se guarda en caché). El catálogo de stock tiene unos
+ * 1.250 avatares de estudio y casi 8.000 photo avatars (octubre de 2026), y la API no filtra por
+ * género: se piden por tipo para que los de estudio, los de mejor calidad, siempre aparezcan.
+ */
+const MAX_PUBLIC_STUDIO_PAGES = 40;
+const MAX_PUBLIC_PHOTO_PAGES = 20;
+const MAX_PUBLIC_VOICE_PAGES = 4;
 const MAX_PRIVATE_PAGES = 10;
 
 type FetchLike = typeof fetch;
@@ -51,6 +65,8 @@ const lookSchema = z.object({
   gender: nullableString,
   default_voice_id: nullableString,
   preferred_orientation: nullableString,
+  supported_api_engines: z.array(z.string()).nullish(),
+  group_id: nullableString,
 });
 
 const pageSchema = <T extends z.ZodType>(item: T) =>
@@ -107,6 +123,99 @@ const videoSchema = z.object({
 
 const assetSchema = z.object({ data: z.object({ asset_id: z.string() }) });
 
+const brandKitSchema = z.object({
+  brand_kit_id: z.string(),
+  name: z.string().nullish(),
+  logo_url: nullableString,
+  colors: z.array(z.string()).nullish(),
+});
+
+const brandKitDetailSchema = z.object({
+  data: z.object({
+    brand_kit_id: z.string(),
+    name: z.string().nullish(),
+    status: z.string().nullish(),
+    colors: z.array(z.string()).nullish(),
+    color_roles: z
+      .object({
+        primary: nullableString,
+        secondary: nullableString,
+        tertiary: nullableString,
+        accent: nullableString,
+      })
+      .nullish(),
+    logos: z
+      .array(z.object({ logo_id: z.string(), name: nullableString, url: nullableString }))
+      .nullish(),
+    logo_roles: z.object({ primary: nullableString }).nullish(),
+    fonts: z.array(z.object({ font_id: z.string(), name: nullableString })).nullish(),
+  }),
+});
+
+function toBrandKitDetail(data: z.infer<typeof brandKitDetailSchema>['data']): BrandKitDetail {
+  const roles = data.color_roles ?? {};
+  const colorRoles: BrandKitDetail['colorRoles'] = {};
+  for (const role of BRAND_COLOR_ROLES) {
+    const value = roles[role];
+    if (value) colorRoles[role] = value;
+  }
+  const logos = (data.logos ?? []).map((logo) => ({
+    id: logo.logo_id,
+    name: logo.name ?? null,
+    url: logo.url ?? null,
+  }));
+  return {
+    id: data.brand_kit_id,
+    name: data.name?.trim() || 'Kit de marca',
+    status: data.status === 'completed' || data.status === 'error' ? data.status : 'loading',
+    colors: data.colors ?? [],
+    colorRoles,
+    logos,
+    logoUrl:
+      logos.find((logo) => logo.id === data.logo_roles?.primary)?.url ?? logos[0]?.url ?? null,
+    primaryLogoId: data.logo_roles?.primary ?? null,
+    fonts: (data.fonts ?? []).map((font) => ({ id: font.font_id, name: font.name ?? null })),
+  };
+}
+
+const agentCreateSchema = z.object({ data: z.object({ session_id: z.string() }) });
+
+const agentMessageSchema = z.object({
+  role: z.string(),
+  content: z.string().nullish(),
+  type: z.string().nullish(),
+  created_at: z.number().nullish(),
+  resource_ids: z.array(z.string()).nullish(),
+});
+
+const agentSessionSchema = z.object({
+  data: z.object({
+    status: z.string(),
+    progress: z.number().nullish(),
+    title: nullableString,
+    video_id: nullableString,
+    messages: z.array(agentMessageSchema).nullish(),
+  }),
+});
+
+const agentResourceSchema = z.object({
+  data: z.object({
+    resource_id: z.string(),
+    resource_type: z.string().nullish(),
+    url: nullableString,
+    thumbnail_url: nullableString,
+  }),
+});
+
+const AGENT_STATUSES: readonly AgentStatus[] = [
+  'thinking',
+  'waiting_for_input',
+  'reviewing',
+  'generating',
+  'completed',
+  'failed',
+];
+
 const errorBodySchema = z.object({
   error: z.object({ code: z.string().nullish(), message: z.string().nullish() }),
 });
@@ -134,6 +243,8 @@ function toAvatar(
       orientation === 'portrait' || orientation === 'landscape' || orientation === 'square'
         ? orientation
         : null,
+    engines: look.supported_api_engines ?? [],
+    groupId: look.group_id ?? null,
   };
 }
 
@@ -212,17 +323,35 @@ export function buildStudioBody(request: RenderRequest) {
     resolution: '1080p',
     // style "default" quema los subtítulos en el video; sin style solo se entrega el SRT aparte.
     ...(request.captions && { caption: { file_format: 'srt', style: 'default' } }),
-    scenes: request.scenes.map((scene) => ({
-      type: 'avatar_video',
-      input: {
-        type: 'avatar',
-        avatar_id: scene.avatarId,
-        script: scene.script,
-        voice_id: scene.voiceId,
-        voice_settings: { speed: request.voiceSpeed },
-        ...toBackground(scene.background),
-      },
-    })),
+    scenes: request.scenes.map((scene) =>
+      scene.kind === 'image'
+        ? {
+            type: 'image',
+            source: { type: 'asset_id', asset_id: scene.assetId },
+            // Narrada: la voz marca la duración. Fija: se indica la duración en segundos.
+            ...(scene.narration
+              ? {
+                  script: scene.narration.script,
+                  voice_id: scene.narration.voiceId,
+                  voice_settings: { speed: request.voiceSpeed },
+                }
+              : { duration: scene.durationSeconds ?? 2 }),
+          }
+        : {
+            type: 'avatar_video',
+            input: {
+              type: 'avatar',
+              avatar_id: scene.avatarId,
+              script: scene.script,
+              voice_id: scene.voiceId,
+              voice_settings: { speed: request.voiceSpeed },
+              // Sin motor, HeyGen usa Avatar IV, que no todos los avatares admiten.
+              ...(scene.engine && { engine: { type: scene.engine } }),
+              ...(scene.motionPrompt && { motion_prompt: scene.motionPrompt }),
+              ...toBackground(scene.background),
+            },
+          },
+    ),
   };
 }
 
@@ -291,7 +420,7 @@ const networkError = () =>
 // --- Proveedor -----------------------------------------------------------------------------
 
 interface RequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH';
   json?: unknown;
   form?: FormData;
   idempotencyKey?: string;
@@ -354,7 +483,22 @@ export class HeyGenProvider implements VideoProvider {
     let token: string | null | undefined;
     for (let page = 0; page < maxPages; page++) {
       const query = new URLSearchParams({ ...params, ...(token ? { token } : {}) });
-      const result = await this.request(pageSchema(item), `${path}?${query}`);
+      const load = () => this.request(pageSchema(item), `${path}?${query}`);
+      let result: z.infer<ReturnType<typeof pageSchema<T>>>;
+      try {
+        result = await load();
+      } catch (error) {
+        // La primera página es obligatoria. En las siguientes, un fallo temporal se reintenta una
+        // vez y, si persiste, se devuelve lo ya cargado en lugar de perder todo el listado.
+        if (page === 0 || !(error instanceof VideoProviderError) || !error.details.reintentable) {
+          throw error;
+        }
+        try {
+          result = await load();
+        } catch {
+          break;
+        }
+      }
       items.push(...result.data);
       token = result.next_token;
       if (!result.has_more || !token) break;
@@ -373,23 +517,18 @@ export class HeyGenProvider implements VideoProvider {
 
   async listAvatars(): Promise<VideoAvatar[]> {
     const limit = String(PAGE_SIZE_LOOKS);
-    const [own, stock] = await Promise.all([
-      this.paginate(
-        lookSchema,
-        '/v3/avatars/looks',
-        { ownership: 'private', limit },
-        MAX_PRIVATE_PAGES,
-      ),
-      this.paginate(
-        lookSchema,
-        '/v3/avatars/looks',
-        { ownership: 'public', limit },
-        MAX_PUBLIC_PAGES,
-      ),
+    const looks = (params: Record<string, string>, maxPages: number) =>
+      this.paginate(lookSchema, '/v3/avatars/looks', { ...params, limit }, maxPages);
+    const [own, studio, photo] = await Promise.all([
+      looks({ ownership: 'private' }, MAX_PRIVATE_PAGES),
+      looks({ ownership: 'public', avatar_type: 'studio_avatar' }, MAX_PUBLIC_STUDIO_PAGES),
+      looks({ ownership: 'public', avatar_type: 'photo_avatar' }, MAX_PUBLIC_PHOTO_PAGES),
     ]);
+    // Propios primero, luego los de estudio (mejor calidad) y al final los photo avatars.
     return [
       ...own.map((look) => toAvatar(look, 'private')),
-      ...stock.map((look) => toAvatar(look, 'public')),
+      ...studio.map((look) => toAvatar(look, 'public')),
+      ...photo.map((look) => toAvatar(look, 'public')),
     ];
   }
 
@@ -402,6 +541,17 @@ export class HeyGenProvider implements VideoProvider {
     return toAvatar(data, 'private');
   }
 
+  async listGroupLooks(groupId: string): Promise<VideoAvatar[]> {
+    const looks = await this.paginate(
+      lookSchema,
+      '/v3/avatars/looks',
+      { group_id: groupId, limit: String(PAGE_SIZE_LOOKS) },
+      2,
+    );
+    // La propiedad no viene en el look; se usa solo para alternar tomas del mismo avatar.
+    return looks.map((look) => toAvatar(look, 'public'));
+  }
+
   async listVoices(language?: string): Promise<VideoVoice[]> {
     const params: Record<string, string> = {
       limit: String(PAGE_SIZE_VOICES),
@@ -409,7 +559,12 @@ export class HeyGenProvider implements VideoProvider {
     };
     const [own, stock] = await Promise.all([
       this.paginate(voiceSchema, '/v3/voices', { ...params, type: 'private' }, MAX_PRIVATE_PAGES),
-      this.paginate(voiceSchema, '/v3/voices', { ...params, type: 'public' }, MAX_PUBLIC_PAGES),
+      this.paginate(
+        voiceSchema,
+        '/v3/voices',
+        { ...params, type: 'public' },
+        MAX_PUBLIC_VOICE_PAGES,
+      ),
     ]);
     return [
       ...own.map((voice) => toVoice(voice, 'private')),
@@ -467,5 +622,111 @@ export class HeyGenProvider implements VideoProvider {
       });
     }
     return response;
+  }
+
+  async listBrandKits(): Promise<BrandKit[]> {
+    const kits = await this.paginate(brandKitSchema, '/v3/brand-kits', { limit: '50' }, 4);
+    return kits.map((kit) => ({
+      id: kit.brand_kit_id,
+      name: kit.name?.trim() || 'Kit de marca',
+      logoUrl: kit.logo_url ?? null,
+      colors: kit.colors ?? [],
+    }));
+  }
+
+  async createAgentSession(request: AgentSessionRequest): Promise<string> {
+    const result = await this.request(agentCreateSchema, '/v3/video-agents', {
+      method: 'POST',
+      json: {
+        prompt: request.prompt,
+        mode: request.mode,
+        orientation: request.orientation,
+        ...(request.avatarId && { avatar_id: request.avatarId }),
+        ...(request.voiceId && { voice_id: request.voiceId }),
+        ...(request.brandKitId && { brand_kit_id: request.brandKitId }),
+        ...(request.files.length > 0 && {
+          files: request.files.map((file) => ({
+            type: 'base64',
+            media_type: file.mimeType,
+            data: file.data.toString('base64'),
+          })),
+        }),
+      },
+    });
+    return result.data.session_id;
+  }
+
+  async getAgentSession(sessionId: string): Promise<AgentSession> {
+    const { data } = await this.request(
+      agentSessionSchema,
+      `/v3/video-agents/${encodeURIComponent(sessionId)}`,
+    );
+    const status = AGENT_STATUSES.find((value) => value === data.status) ?? 'thinking';
+    return {
+      status,
+      progress: data.progress ?? null,
+      title: data.title ?? null,
+      videoId: data.video_id ?? null,
+      messages: (data.messages ?? []).map((message) => ({
+        role: message.role === 'user' ? 'user' : 'model',
+        content: message.content ?? '',
+        type: message.type ?? 'text',
+        createdAt: message.created_at ?? null,
+        resourceIds: message.resource_ids ?? [],
+      })),
+    };
+  }
+
+  async sendAgentMessage(sessionId: string, message: string): Promise<void> {
+    await this.request(z.unknown(), `/v3/video-agents/${encodeURIComponent(sessionId)}`, {
+      method: 'POST',
+      json: { message },
+    });
+  }
+
+  async getAgentResource(sessionId: string, resourceId: string): Promise<AgentResource> {
+    const { data } = await this.request(
+      agentResourceSchema,
+      `/v3/video-agents/${encodeURIComponent(sessionId)}/resources/${encodeURIComponent(resourceId)}`,
+    );
+    return {
+      id: data.resource_id,
+      type: data.resource_type ?? 'unknown',
+      url: data.url ?? null,
+      thumbnailUrl: data.thumbnail_url ?? null,
+    };
+  }
+
+  async createBrandKitFromUrl(url: string, name: string, idempotencyKey: string): Promise<string> {
+    const result = await this.request(
+      z.object({ data: z.object({ brand_kit_id: z.string() }) }),
+      '/v3/brand-kits',
+      { method: 'POST', json: { url, name }, idempotencyKey },
+    );
+    return result.data.brand_kit_id;
+  }
+
+  async getBrandKit(id: string): Promise<BrandKitDetail> {
+    const { data } = await this.request(
+      brandKitDetailSchema,
+      `/v3/brand-kits/${encodeURIComponent(id)}`,
+    );
+    return toBrandKitDetail(data);
+  }
+
+  async updateBrandKit(id: string, update: BrandKitUpdate): Promise<BrandKitDetail> {
+    const { data } = await this.request(
+      brandKitDetailSchema,
+      `/v3/brand-kits/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        json: {
+          ...(update.name && { name: update.name }),
+          ...(update.colorRoles && { color_roles: update.colorRoles }),
+          ...(update.primaryLogoId && { logo_roles: { primary: update.primaryLogoId } }),
+        },
+      },
+    );
+    return toBrandKitDetail(data);
   }
 }

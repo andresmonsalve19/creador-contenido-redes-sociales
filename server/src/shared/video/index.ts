@@ -1,7 +1,7 @@
 import { readSecret } from '../config/env.js';
 import { notReady } from '../http/errors.js';
 import { HeyGenProvider } from './heygen/client.js';
-import type { VideoAvatar, VideoProvider, VideoProviderId, VideoVoice } from './types.js';
+import type { BrandKit, VideoAvatar, VideoProvider, VideoProviderId, VideoVoice } from './types.js';
 
 const factories: Record<
   VideoProviderId,
@@ -51,6 +51,16 @@ function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
 export function listAvatars(): Promise<VideoAvatar[]> {
   const provider = getVideoProvider();
   return cached(`${provider.id}:avatars`, () => provider.listAvatars());
+}
+
+/** Olvida los listados guardados (p. ej. tras crear un kit de marca). */
+export function forgetBrandKits(): void {
+  for (const key of listCache.keys()) if (key.endsWith(':brand-kits')) listCache.delete(key);
+}
+
+export function listBrandKits(): Promise<BrandKit[]> {
+  const provider = getVideoProvider();
+  return cached(`${provider.id}:brand-kits`, () => provider.listBrandKits());
 }
 
 export function listVoices(language?: string): Promise<VideoVoice[]> {

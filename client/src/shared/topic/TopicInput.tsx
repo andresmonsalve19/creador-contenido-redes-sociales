@@ -11,15 +11,23 @@ interface TopicInputProps {
   textModel: string;
   /** Formato en palabras, p. ej. "carrusel de 5 imágenes". */
   format: string;
+  /** Tipo de contenido: decide qué aprendizajes y lineamientos usa la IA. */
+  kind?: 'image' | 'video';
 }
 
 /** Campo de temática con sugerencias generadas por IA a partir del contexto de la marca. */
-export function TopicInput({ value, onChange, textModel, format }: TopicInputProps) {
+export function TopicInput({
+  value,
+  onChange,
+  textModel,
+  format,
+  kind = 'image',
+}: TopicInputProps) {
   const suggest = useMutation({
     mutationFn: () =>
       api<{ suggestions: string[] }>('/topic-suggestions', {
         method: 'POST',
-        json: { textModel, format, hint: value.trim() || undefined },
+        json: { textModel, format, kind, hint: value.trim() || undefined },
       }),
   });
 

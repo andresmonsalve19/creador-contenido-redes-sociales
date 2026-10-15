@@ -15,10 +15,14 @@ interface SlideContext {
 }
 
 /** Texto de contacto tal como debe aparecer, entre comillas, para que el modelo lo copie sin alterarlo. */
-function contactList({ email, website }: Contact): string {
-  return [email && `el correo "${email}"`, website && `el sitio web "${website}"`]
+function contactList({ email, website, whatsapp }: Contact): string {
+  return [
+    email && `el correo "${email}"`,
+    website && `el sitio web "${website}"`,
+    whatsapp && `el WhatsApp "${whatsapp}"`,
+  ]
     .filter(Boolean)
-    .join(' y ');
+    .join(', ');
 }
 
 const ROLE_GUIDE: Record<SlideRole, (ctx: SlideContext) => string> = {
@@ -75,8 +79,8 @@ Reglas para cada prompt de imagen:
 
 Pie de página (en TODAS las imágenes, cuando hay datos de contacto):
 - Describe una franja inferior estilizada de alrededor del 8 al 10 % del alto, coherente con la paleta de la marca: color sólido o degradado sutil, con una línea fina de acento en el borde superior.
-- Dentro del pie van el correo y el sitio web con íconos minimalistas (sobre y globo), en tipografía pequeña pero muy legible, centrados o separados por un divisor vertical (apilados si la proporción es estrecha).
-- Escribe el correo y el sitio web entre comillas, exactamente como se te dan, letra por letra, sin cambiarlos ni agregar "https://".
+- Dentro del pie van SOLO los datos de contacto que se te dan (correo, sitio web y/o WhatsApp), cada uno con su ícono minimalista (sobre, globo, ícono de WhatsApp), en tipografía pequeña pero muy legible, centrados o separados por un divisor vertical (apilados si la proporción es estrecha). No agregues datos que no se te den.
+- Escribe cada dato entre comillas, exactamente como se te da, letra por letra y dígito por dígito, sin cambiarlo ni agregar "https://".
 - El pie es sobrio y elegante: no compite con el titular y ningún elemento importante lo invade.
 
 Reglas para el texto de la publicación ("captionBody"):
@@ -108,6 +112,7 @@ export function buildImagePrompts(body: PromptsBody, brand: PromptContext) {
     ? `# Datos de contacto (cópialos tal cual en el pie de página)\n${[
         body.contact.email && `- Correo: "${body.contact.email}"`,
         body.contact.website && `- Sitio web: "${body.contact.website}"`,
+        body.contact.whatsapp && `- WhatsApp: "${body.contact.whatsapp}"`,
       ]
         .filter(Boolean)
         .join('\n')}`

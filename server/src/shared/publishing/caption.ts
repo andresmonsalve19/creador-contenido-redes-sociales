@@ -13,6 +13,7 @@ export function assembleCaption(body: string, hashtags: string[], contact: Conta
   const contactLines = [
     contact.email && `📩 ${contact.email}`,
     contact.website && `🌐 ${contact.website}`,
+    contact.whatsapp && `💬 WhatsApp: ${contact.whatsapp}`,
   ].filter(Boolean);
 
   const tags = [...new Set(hashtags.map(toHashtag).filter(Boolean))].join(' ');

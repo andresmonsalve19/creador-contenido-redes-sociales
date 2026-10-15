@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import { contactSchema } from '../../shared/publishing/contact.js';
-import { VIDEO_ASPECT_RATIOS } from '../../shared/video/types.js';
+import { VIDEO_ASPECT_RATIOS, VIDEO_ENGINES } from '../../shared/video/types.js';
 import { VIDEO_DURATIONS, hexColor } from '../../shared/video/videoSettings.schema.js';
 
-export const MAX_SCENES = 5;
+export const MAX_SCENES = 7;
 /** Ritmo de lectura usado para estimar la duración del guion. */
 export const DEFAULT_WORDS_PER_SECOND = 2.5;
 /** HeyGen admite hasta 5.000 caracteres de guion por avatar. */
@@ -11,6 +11,22 @@ const MAX_SCRIPT_CHARS = 5000;
 
 export const sceneRoleSchema = z.enum(['single', 'hook', 'development', 'cta']);
 export type SceneRole = z.infer<typeof sceneRoleSchema>;
+
+/**
+ * Tipo de escena:
+ * - avatar: el presentador habla a cámara.
+ * - broll: imagen de apoyo a pantalla completa mientras la misma voz sigue hablando.
+ */
+export const sceneKindSchema = z.enum(['avatar', 'broll']);
+export type SceneKind = z.infer<typeof sceneKindSchema>;
+
+/**
+ * Simple: solo el presentador. Dinámico: escenas compuestas por la app (presentador, imágenes de
+ * apoyo y tarjetas). Agente: el Video Agent de HeyGen edita el video completo (gráficos, textos,
+ * música y transiciones) a partir del guion, con revisión del storyboard antes de generar.
+ */
+export const videoStyleSchema = z.enum(['agent', 'dynamic', 'simple']);
+export type VideoStyle = z.infer<typeof videoStyleSchema>;
 
 const durationSchema = z.union(VIDEO_DURATIONS.map((value) => z.literal(value)));
 const aspectRatioSchema = z.enum(VIDEO_ASPECT_RATIOS);
@@ -20,10 +36,17 @@ const ctaSchema = z.string().trim().min(2, 'Elige un llamado a la acción.').max
 /** Escena tal como la ve y edita el usuario. */
 const sceneDraftSchema = z.object({
   role: sceneRoleSchema,
+  kind: sceneKindSchema.default('avatar'),
   title: z.string().trim().min(1).max(120),
   script: z.string().trim().min(3, 'Una escena no tiene texto hablado.').max(MAX_SCRIPT_CHARS),
   subtitleNotes: z.string().trim().max(500).default(''),
   backgroundNote: z.string().trim().max(500).default(''),
+  /** Escenas de apoyo: qué muestra la imagen. */
+  visualPrompt: z.string().trim().max(1000).default(''),
+  /** Escenas del presentador: gestos sugeridos (se usan si el avatar los admite). */
+  gestures: z.string().trim().max(500).default(''),
+  /** Texto que aparece en pantalla (gancho, palabra clave…). */
+  onScreenText: z.string().trim().max(200).default(''),
 });
 export type SceneDraft = z.infer<typeof sceneDraftSchema>;
 
@@ -36,6 +59,11 @@ export const scriptBody = z.object({
   contact: contactSchema,
   cta: ctaSchema,
   wordsPerSecond: wordsPerSecondSchema,
+  style: videoStyleSchema.default('simple'),
+  /** Las tarjetas de marca restan tiempo al guion hablado. */
+  brandCards: z
+    .object({ intro: z.boolean(), outro: z.boolean() })
+    .default({ intro: false, outro: false }),
 });
 export type ScriptBody = z.infer<typeof scriptBody>;
 
@@ -51,12 +79,17 @@ export const scriptResponseSchema = z.object({
         script: z.string().min(3),
         subtitleNotes: z.string(),
         backgroundNote: z.string(),
+        visualPrompt: z.string(),
+        gestures: z.string(),
+        onScreenText: z.string(),
       }),
     )
     .min(1)
     .max(MAX_SCENES),
   /** Partes de la temática, los lineamientos o los aprendizajes que se ignoraron por cumplimiento. */
   ignoredByCompliance: z.array(z.string()).max(6),
+  /** Edición automática: párrafo de estilo visual (paleta, tipografías, movimiento, música). */
+  styleParagraph: z.string(),
 });
 export type ScriptResponse = z.infer<typeof scriptResponseSchema>;
 
@@ -67,6 +100,11 @@ export const reviseScriptBody = z.object({
   contact: contactSchema,
   cta: ctaSchema,
   wordsPerSecond: wordsPerSecondSchema,
+  brandCards: z
+    .object({ intro: z.boolean(), outro: z.boolean() })
+    .default({ intro: false, outro: false }),
+  style: videoStyleSchema.default('simple'),
+  styleParagraph: z.string().trim().max(3000).default(''),
   concept: z.string().trim().max(1000),
   caption: z.string().trim().max(5000),
   scenes: z.array(sceneDraftSchema).min(1).max(MAX_SCENES),
@@ -81,6 +119,21 @@ export const estimateBody = z.object({
     .array(z.object({ script: z.string().max(MAX_SCRIPT_CHARS) }))
     .min(1)
     .max(MAX_SCENES),
+});
+
+/** Imagen de apoyo de una escena (b-roll). */
+export const brollBody = z.object({
+  imageModel: z.string().min(1).optional(),
+  aspectRatio: aspectRatioSchema,
+  topic: z.string().trim().min(3).max(1000),
+  visualPrompt: z.string().trim().min(3, 'Describe qué debe mostrar la imagen.').max(1000),
+});
+
+/** Vista previa de las tarjetas de apertura y cierre con el logo. */
+export const cardsPreviewBody = z.object({
+  aspectRatio: aspectRatioSchema,
+  cta: ctaSchema,
+  contact: contactSchema,
 });
 
 export const backgroundBody = z.object({
@@ -102,11 +155,43 @@ export const sceneBackgroundSchema = z.discriminatedUnion('type', [
 export type SceneBackgroundSpec = z.infer<typeof sceneBackgroundSchema>;
 
 const sceneSpecSchema = sceneDraftSchema.extend({
-  avatarId: z.string().trim().min(1, 'Elige un avatar para cada escena.').max(200),
+  /** Presentador de la escena (vacío en las escenas de apoyo). */
+  avatarId: z.string().trim().max(200).default(''),
   voiceId: z.string().trim().min(1, 'Elige una voz para cada escena.').max(200),
   background: sceneBackgroundSchema,
+  /** Escenas de apoyo: imagen generada para la escena. */
+  imageId: z.uuid().nullish(),
+  /** Lo completa el servidor al generar, según los motores que admite el avatar. */
+  engine: z.enum(VIDEO_ENGINES).nullish(),
+  /** Lo completa el servidor si el avatar admite gestos. */
+  motionPrompt: z.string().max(500).nullish(),
 });
 export type SceneSpec = z.infer<typeof sceneSpecSchema>;
+
+const scenesSpecSchema = z
+  .array(sceneSpecSchema)
+  .min(1)
+  .max(MAX_SCENES)
+  .superRefine((scenes, ctx) => {
+    scenes.forEach((scene, index) => {
+      if (scene.kind === 'avatar' && !scene.avatarId) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [index, 'avatarId'],
+          message: 'Elige un avatar para cada escena.',
+        });
+      }
+    });
+    if (!scenes.some((scene) => scene.kind === 'avatar')) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'El video necesita al menos una escena con el presentador.',
+      });
+    }
+  });
+
+/** Tarjetas de marca con el logo (estilo dinámico). */
+const brandCardsSchema = z.object({ intro: z.boolean(), outro: z.boolean() });
 
 /** Especificación completa de un video: lo necesario para generarlo, duplicarlo o auditarlo. */
 export const videoSpecSchema = z.object({
@@ -119,7 +204,21 @@ export const videoSpecSchema = z.object({
   wordsPerSecond: wordsPerSecondSchema,
   captions: z.boolean(),
   voiceSpeed: z.number().min(0.5).max(1.5),
-  scenes: z.array(sceneSpecSchema).min(1).max(MAX_SCENES),
+  scenes: scenesSpecSchema,
+  style: videoStyleSchema.default('simple'),
+  brandCards: brandCardsSchema.default({ intro: false, outro: false }),
+  /** Alternar otras tomas (looks) del mismo presentador entre escenas, si las tiene. */
+  varyLooks: z.boolean().default(false),
+  /** Para la tarjeta de cierre. */
+  cta: ctaSchema.optional(),
+  contact: contactSchema.optional(),
+  /** Edición automática: párrafo de estilo y kit de marca del proveedor. */
+  styleParagraph: z.string().trim().max(3000).default(''),
+  brandKitId: z.string().trim().max(200).nullish(),
+  /** Las completa el servidor al generar: imágenes de las tarjetas de apertura y cierre. */
+  cards: z
+    .object({ introImageId: z.uuid().nullable(), outroImageId: z.uuid().nullable() })
+    .nullish(),
 });
 export type VideoSpec = z.infer<typeof videoSpecSchema>;
 

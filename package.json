@@ -11,6 +11,8 @@
     "build": "npm run build -w server && npm run build -w client",
     "start": "npm run start -w server",
     "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "test": "npm run test -w server",
+    "probar:heygen": "npm run probar:heygen -w server",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

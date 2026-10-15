@@ -5,9 +5,11 @@ interface StepperProps {
   current: number;
   /** Permite volver a un paso ya completado. */
   onSelect?: (index: number) => void;
+  /** Permite ir también a los pasos siguientes (p. ej. al editar una configuración ya completa). */
+  freeNavigation?: boolean;
 }
 
-export function Stepper({ steps, current, onSelect }: StepperProps) {
+export function Stepper({ steps, current, onSelect, freeNavigation = false }: StepperProps) {
   return (
     <nav aria-label="Progreso" className={styles.stepper}>
       <ol className={styles.list}>
@@ -23,10 +25,12 @@ export function Stepper({ steps, current, onSelect }: StepperProps) {
           );
           return (
             <li key={label} className={styles.item} data-state={state}>
-              {state === 'done' && onSelect ? (
+              {(state === 'done' || (freeNavigation && state === 'todo')) && onSelect ? (
                 <button type="button" className={styles.step} onClick={() => onSelect(index)}>
                   {content}
-                  <span className="visually-hidden">(completado, volver a este paso)</span>
+                  <span className="visually-hidden">
+                    {state === 'done' ? '(completado, volver a este paso)' : '(ir a este paso)'}
+                  </span>
                 </button>
               ) : (
                 <span
