@@ -134,6 +134,26 @@ quien conoce la API key.
 
 ## Instalación paso a paso
 
+### Opción rápida en Windows: doble clic (sin saber programar)
+
+1. Copia la carpeta del proyecto al equipo **sin** `node_modules`, `server/data` ni `.env` (esos
+   tienen datos de la marca y claves: no se comparten).
+2. Haz doble clic en **`iniciar.bat`**. La primera vez:
+   - descarga Node.js portátil desde nodejs.org (v24 LTS), verifica su firma SHA-256 y lo guarda en
+     `herramientas\node` (no instala nada en Windows ni pide permisos de administrador);
+   - instala los componentes y prepara la aplicación (unos minutos, necesita internet).
+3. Se abre el navegador en `http://127.0.0.1:3001`. Mientras uses la app, deja abierta la ventana
+   negra; para cerrar la app, cierra esa ventana.
+4. Las siguientes veces arranca directo. Si la app ya estaba abierta, `iniciar.bat` solo la muestra
+   en el navegador.
+5. Si recibes una versión nueva del proyecto, ejecuta **`actualizar.bat`** (no borra tus datos ni
+   tus claves).
+
+Requisitos: Windows 10 u 11 de 64 bits, internet la primera vez y PowerShell (viene con Windows).
+Si Windows muestra "Windows protegió su PC" o el archivo vino en un ZIP descargado, haz clic derecho
+→ Propiedades → **Desbloquear**. En equipos corporativos, una política de TI puede impedir ejecutar
+scripts de PowerShell; en ese caso, pide a TI que lo habilite.
+
 ### 1. Clonar el repositorio
 
 ```bash
@@ -456,6 +476,8 @@ Se ejecutan desde la raíz del proyecto.
 | `npm run lint`      | Ejecuta ESLint (incluye la regla de arquitectura modular).    |
 | `npm test`          | Pruebas del servidor con respuestas simuladas de HeyGen (no usan la key ni gastan saldo). |
 | `npm run probar:heygen` | Verifica la conexión con HeyGen listando avatares (solo lectura). |
+| `iniciar.bat` (Windows) | Prepara todo la primera vez (Node portátil, componentes, compilación) y abre la app. |
+| `actualizar.bat` (Windows) | Reinstala componentes y vuelve a compilar tras recibir una versión nueva. |
 | `npm run format`    | Da formato al código con Prettier.                            |
 
 ## Arquitectura

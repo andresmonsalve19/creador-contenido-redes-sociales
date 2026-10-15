@@ -8,3 +8,6 @@ server/data/
 .claude/
 *.log
 .DS_Store
+
+# Node.js portatil que descarga iniciar.bat en Windows
+herramientas/node/
