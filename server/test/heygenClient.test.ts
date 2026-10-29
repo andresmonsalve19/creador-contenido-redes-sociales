@@ -219,6 +219,196 @@ describe('HeyGenProvider', () => {
     assert.deepEqual(avatar.engines, ['avatar_iii']);
   });
 
+  it('deja solo las voces del idioma pedido (HeyGen solo las ordena)', async () => {
+    const voice = (id: string, language: string) => ({
+      voice_id: id,
+      name: id,
+      language,
+      gender: 'female',
+      preview_audio_url: null,
+    });
+    const { fetchImpl } = mockFetch((url) =>
+      jsonResponse({
+        data:
+          url.searchParams.get('type') === 'private'
+            ? []
+            : url.searchParams.get('language') === 'es'
+              ? [voice('juliana', 'es'), voice('en', 'English')]
+              : [voice('es', 'Spanish'), voice('multi', 'Multilingual'), voice('en', 'English')],
+        has_more: false,
+      }),
+    );
+    const voices = await new HeyGenProvider(FAKE_KEY, fetchImpl).listVoices('Spanish');
+    // También las etiquetadas con el código ("es"), que HeyGen solo pone primero si se piden así.
+    assert.deepEqual(
+      voices.map((v) => v.id),
+      ['es', 'juliana'],
+    );
+  });
+
+  it('lee las escenas del video con su texto hablado y si muestran al presentador', async () => {
+    const { fetchImpl, calls } = mockFetch(() =>
+      jsonResponse({
+        data: {
+          video_id: 'vid_1',
+          edit_version: 'a'.repeat(64),
+          video: {},
+          scenes: [
+            {
+              id: 's1',
+              script: [{ id: 't1', text: 'Hola,  bienvenida.' }],
+              elements: [
+                { id: 'e1', type: 'avatar' },
+                { id: 'e2', type: 'motion_graphics' },
+              ],
+            },
+            { id: 's2', script: [{ id: 't2', text: '<break time="3.0s"/>' }], elements: [] },
+          ],
+        },
+      }),
+    );
+    const scenes = await new HeyGenProvider(FAKE_KEY, fetchImpl).getVideoScenes('vid_1');
+    assert.ok(calls[0]?.url.endsWith('/v3/videos/vid_1/scenes'));
+    assert.equal(scenes.editVersion, 'a'.repeat(64));
+    assert.deepEqual(scenes.scenes, [
+      { id: 's1', script: 'Hola, bienvenida.', hasPresenter: true },
+      { id: 's2', script: '', hasPresenter: false },
+    ]);
+  });
+
+  it('envía los cambios por escena como edit_plan con clave de idempotencia', async () => {
+    const { fetchImpl, calls } = mockFetch(() =>
+      jsonResponse({ data: { session_id: 'ses_1', run_id: 'run_1', video_id: 'vid_2' } }),
+    );
+    const videoId = await new HeyGenProvider(FAKE_KEY, fetchImpl).editAgentScenes(
+      'ses_1',
+      [{ sceneId: 's1', text: 'Logo más grande', snapshotVideoId: 'vid_1', editVersion: 'v' }],
+      'clave-1',
+    );
+    assert.equal(videoId, 'vid_2');
+    assert.equal(calls[0]?.method, 'POST');
+    assert.ok(calls[0]?.url.endsWith('/v3/video-agents/ses_1'));
+    assert.equal(calls[0]?.headers['idempotency-key'], 'clave-1');
+    assert.deepEqual(calls[0]?.body, {
+      edit_plan: [
+        {
+          scene_id: 's1',
+          text: 'Logo más grande',
+          scene_snapshot_video_id: 'vid_1',
+          edit_version: 'v',
+        },
+      ],
+    });
+  });
+
+  it('sube el video del gemelo en tres pasos y no envía la API key al almacenamiento', async () => {
+    const { fetchImpl, calls } = mockFetch((url) => {
+      if (url.pathname.endsWith('/direct-uploads')) {
+        return jsonResponse({
+          data: {
+            asset_id: 'asset_v',
+            upload_url: 'https://almacenamiento.invalid/subida',
+            upload_headers: { 'Content-Type': 'video/mp4' },
+          },
+        });
+      }
+      if (url.hostname === 'almacenamiento.invalid') return new Response(null, { status: 200 });
+      return jsonResponse({ data: { asset_id: 'asset_v', status: 'processing' } });
+    });
+    const assetId = await new HeyGenProvider(FAKE_KEY, fetchImpl).uploadVideo(
+      Buffer.from('mp4'),
+      'video/mp4',
+      'doctora.mp4',
+    );
+    assert.equal(assetId, 'asset_v');
+    assert.deepEqual(calls[0]?.body, {
+      filename: 'doctora.mp4',
+      content_type: 'video/mp4',
+      size_bytes: 3,
+    });
+    assert.equal(calls[1]?.method, 'PUT');
+    assert.equal(calls[1]?.headers['x-api-key'], undefined);
+    assert.ok(calls[2]?.url.endsWith('/v3/assets/asset_v/complete'));
+  });
+
+  it('crea el gemelo digital con el video subido y devuelve look, grupo y voz clonada', async () => {
+    const { fetchImpl, calls } = mockFetch(() =>
+      jsonResponse({
+        data: {
+          avatar_item: { id: 'look_1', default_voice_id: 'voz_clonada' },
+          avatar_group: { id: 'grupo_1' },
+        },
+      }),
+    );
+    const twin = await new HeyGenProvider(FAKE_KEY, fetchImpl).createDigitalTwin(
+      'Dra. Ejemplo',
+      'asset_v',
+      'clave-1',
+    );
+    assert.deepEqual(twin, { lookId: 'look_1', groupId: 'grupo_1', voiceId: 'voz_clonada' });
+    assert.equal(calls[0]?.headers['idempotency-key'], 'clave-1');
+    assert.deepEqual(calls[0]?.body, {
+      type: 'digital_twin',
+      name: 'Dra. Ejemplo',
+      file: { type: 'asset_id', asset_id: 'asset_v' },
+    });
+  });
+
+  it('un gemelo entrenado sin consentimiento aceptado sigue pendiente', async () => {
+    const { fetchImpl } = mockFetch((url) =>
+      jsonResponse({
+        data: url.pathname.includes('/looks/')
+          ? { status: 'completed', supported_api_engines: ['avatar_v'], default_voice_id: 'v1' }
+          : { consent_status: 'pending' },
+      }),
+    );
+    const state = await new HeyGenProvider(FAKE_KEY, fetchImpl).getDigitalTwin('look_1', 'grupo_1');
+    assert.equal(state.status, 'pending_consent');
+    assert.equal(state.consentStatus, 'pending');
+    assert.equal(state.voiceId, 'v1');
+  });
+
+  it('crea ropa nueva para un avatar propio como look de la misma persona', async () => {
+    const { fetchImpl, calls } = mockFetch(() =>
+      jsonResponse({ data: { avatar_item: { id: 'look_2' }, avatar_group: { id: 'grupo_1' } } }),
+    );
+    const lookId = await new HeyGenProvider(FAKE_KEY, fetchImpl).createLookFromPrompt(
+      'look_1',
+      'Bata blanca',
+      'Con bata médica blanca, consultorio luminoso',
+      '9:16',
+      'clave-1',
+    );
+    assert.equal(lookId, 'look_2');
+    assert.ok(calls[0]?.url.endsWith('/v3/avatars'));
+    assert.equal(calls[0]?.headers['idempotency-key'], 'clave-1');
+    assert.deepEqual(calls[0]?.body, {
+      type: 'prompt',
+      name: 'Bata blanca',
+      prompt: 'Con bata médica blanca, consultorio luminoso',
+      avatar_id: 'look_1',
+      aspect_ratio: '9:16',
+    });
+  });
+
+  it('lee el motivo de una sesión del agente que falló', async () => {
+    const { fetchImpl } = mockFetch(() =>
+      jsonResponse({
+        data: {
+          status: 'failed',
+          messages: [{ role: 'model', content: 'Here is the storyboard plan', type: 'resource' }],
+          error: { code: 'free_tier_quota_exceeded', message: 'You have reached your quota.' },
+        },
+      }),
+    );
+    const session = await new HeyGenProvider(FAKE_KEY, fetchImpl).getAgentSession('ses_1');
+    assert.equal(session.status, 'failed');
+    assert.deepEqual(session.error, {
+      code: 'free_tier_quota_exceeded',
+      message: 'You have reached your quota.',
+    });
+  });
+
   it('prefiere el video con subtítulos al consultar el estado', async () => {
     const { fetchImpl } = mockFetch(() => jsonResponse(fixture('video-completed.json')));
     const state = await new HeyGenProvider(FAKE_KEY, fetchImpl).getVideo('vid_ejemplo_001');
@@ -302,10 +492,10 @@ describe('HeyGenProvider', () => {
     assert.equal(calls[0]?.headers['x-api-key'], undefined);
   });
 
-  it('elige Avatar IV si el avatar lo admite; si no, Avatar III y luego Avatar V', () => {
-    assert.equal(pickEngine(['avatar_v', 'avatar_iv', 'avatar_iii']), 'avatar_iv');
-    assert.equal(pickEngine(['avatar_iii']), 'avatar_iii');
-    assert.equal(pickEngine(['avatar_v']), 'avatar_v');
+  it('elige Avatar V si el avatar lo admite; si no, Avatar IV; nunca Avatar III', () => {
+    assert.equal(pickEngine(['avatar_v', 'avatar_iv', 'avatar_iii']), 'avatar_v');
+    assert.equal(pickEngine(['avatar_iv', 'avatar_iii']), 'avatar_iv');
+    assert.equal(pickEngine(['avatar_iii']), null);
     assert.equal(pickEngine([]), null);
   });
 
@@ -362,5 +552,41 @@ describe('HeyGenProvider', () => {
         logo_roles: { primary: 'logo_1' },
       });
     });
+  });
+
+  it('diseña voces con descripción, género y grupo', async () => {
+    const { fetchImpl, calls } = mockFetch(() =>
+      jsonResponse({
+        data: {
+          voices: [
+            {
+              voice_id: 'voz_1',
+              name: 'Voz Ejemplo',
+              language: 'Spanish',
+              gender: 'female',
+              preview_audio_url: 'https://ejemplo.invalid/voz.mp3',
+              type: 'public',
+            },
+          ],
+          seed: 1,
+        },
+      }),
+    );
+    const voices = await new HeyGenProvider(FAKE_KEY, fetchImpl).designVoices({
+      prompt: 'Warm female voice',
+      gender: 'female',
+      seed: 1,
+    });
+    assert.equal(calls[0]?.method, 'POST');
+    assert.ok(calls[0]?.url.endsWith('/v3/voices'));
+    assert.deepEqual(calls[0]?.body, {
+      prompt: 'Warm female voice',
+      seed: 1,
+      gender: 'female',
+    });
+    assert.deepEqual(
+      voices.map((voice) => [voice.id, voice.language, voice.ownership]),
+      [['voz_1', 'Spanish', 'public']],
+    );
   });
 });

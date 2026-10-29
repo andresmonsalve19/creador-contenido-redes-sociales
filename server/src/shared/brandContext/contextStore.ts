@@ -3,6 +3,14 @@ import path from 'node:path';
 import { z } from 'zod';
 import type { InlineImage } from '../ai/providers/types.js';
 import { DATA_DIR } from '../config/paths.js';
+import {
+  formatIdentityForPrompt,
+  readIdentity,
+  readPartnerLogos,
+  restoreIdentityFile,
+  type PartnerUsage,
+} from './identityStore.js';
+import { backupCurrent, readVersion } from './brandHistory.js';
 import { notReady } from '../http/errors.js';
 
 const BRAND_DIR = path.join(DATA_DIR, 'brand');
@@ -48,6 +56,10 @@ export interface BrandContext {
   company: string;
   design: string;
   logo: InlineImage;
+  /** Slogans, frases, identidad y asociaciones, listo para el prompt (vacío si no hay). */
+  identity: string;
+  /** Logos de asociaciones que respaldan a la marca. */
+  partnerLogos: { name: string; usage: PartnerUsage; image: InlineImage }[];
 }
 
 const logoFile = (mimeType: LogoMimeType) => path.join(BRAND_DIR, `logo.${LOGO_TYPES[mimeType]}`);
@@ -72,6 +84,8 @@ export async function saveBrand(upload: BrandUpload): Promise<BrandMeta> {
   for (const kind of Object.keys(MARKDOWN_FILES) as MarkdownKind[]) {
     const file = upload[kind];
     if (!file) continue;
+    // Copia de la versión anterior: así cualquier cambio (desde la app o Claude) se puede deshacer.
+    await backupCurrent(kind, await readMarkdown(kind));
     await fs.writeFile(MARKDOWN_FILES[kind], file.content, 'utf8');
     meta[kind] = { fileName: file.fileName, updatedAt };
   }
@@ -105,13 +119,59 @@ export async function readLogo(): Promise<{ mimeType: LogoMimeType; data: Buffer
 
 /** Contexto completo de la marca para los prompts. Falla si aún no se cargó todo. */
 export async function getBrandContext(): Promise<BrandContext> {
-  const [company, design, logo] = await Promise.all([
+  const [company, design, logo, identity, partnerLogos] = await Promise.all([
     readMarkdown('company'),
     readMarkdown('design'),
     readLogo(),
+    readIdentity(),
+    readPartnerLogos(),
   ]);
   if (!company || !design || !logo) {
     throw notReady('Falta cargar el contexto de la empresa, los lineamientos de diseño o el logo.');
   }
-  return { company, design, logo: { mimeType: logo.mimeType, data: logo.data.toString('base64') } };
+  return {
+    company,
+    design,
+    logo: { mimeType: logo.mimeType, data: logo.data.toString('base64') },
+    identity: formatIdentityForPrompt(identity),
+    partnerLogos: partnerLogos.map((partner) => ({
+      name: partner.name,
+      usage: partner.usage,
+      image: { mimeType: partner.mimeType, data: partner.data.toString('base64') },
+    })),
+  };
+}
+
+/**
+ * Reemplaza el contenido de un archivo Markdown de la marca (p. ej. una versión mejorada por
+ * Claude). Conserva el nombre de archivo registrado y devuelve el id de la copia anterior.
+ */
+export async function saveMarkdown(kind: MarkdownKind, content: string): Promise<string | null> {
+  await fs.mkdir(BRAND_DIR, { recursive: true });
+  const meta = await readMeta();
+  const fallbackName: Record<MarkdownKind, string> = {
+    company: 'empresa.md',
+    design: 'lineamientos-diseno.md',
+    videoGuidelines: 'lineamientos-video.md',
+  };
+  const backupId = await backupCurrent(kind, await readMarkdown(kind));
+  await fs.writeFile(MARKDOWN_FILES[kind], content, 'utf8');
+  meta[kind] = {
+    fileName: meta[kind]?.fileName ?? fallbackName[kind],
+    updatedAt: new Date().toISOString(),
+  };
+  await fs.writeFile(META_FILE, JSON.stringify(meta, null, 2), 'utf8');
+  return backupId;
+}
+
+/** Vuelve a una versión guardada. La versión actual también queda guardada antes. */
+export async function restoreVersion(
+  id: string,
+): Promise<{ kind: string; backupId: string | null } | null> {
+  const version = await readVersion(id);
+  if (!version) return null;
+  if (version.kind === 'identity') {
+    return { kind: 'identity', backupId: await restoreIdentityFile(version.content) };
+  }
+  return { kind: version.kind, backupId: await saveMarkdown(version.kind, version.content) };
 }

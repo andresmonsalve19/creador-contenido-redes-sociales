@@ -14,6 +14,13 @@ interface VoicePickerProps {
   onChange: (id: string) => void;
   /** Género del avatar: solo se ofrecen voces de ese género para que no queden mezcladas. */
   gender?: Gender;
+  /**
+   * Voz original del avatar en HeyGen (la que mejor le encaja): se recomienda y se muestra
+   * primero, aunque sea de otro idioma.
+   */
+  original?: VideoVoice | null;
+  /** Idioma elegido para las voces: avisa si la voz original es de otro. */
+  language?: string;
 }
 
 /** Selector de voces con búsqueda y botón para escuchar la muestra del proveedor. */
@@ -23,6 +30,8 @@ export function VoicePicker({
   value,
   onChange,
   gender = 'unknown',
+  original = null,
+  language,
 }: VoicePickerProps) {
   const name = useId();
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -31,13 +40,23 @@ export function VoicePicker({
   const [playing, setPlaying] = useState<string | null>(null);
 
   const filtered = useMemo(() => voicesForGender(voices, gender), [voices, gender]);
+  const recommendedId = original?.id ?? null;
+  const foreign =
+    original && language && original.language?.trim().toLowerCase() !== language.toLowerCase();
 
   const ordered = useMemo(() => {
     const text = query.trim().toLowerCase();
-    return filtered.voices
+    const list = original
+      ? [original, ...filtered.voices.filter((voice) => voice.id !== original.id)]
+      : filtered.voices;
+    return list
       .filter((voice) => !text || voice.name.toLowerCase().includes(text))
-      .sort((a, b) => Number(b.id === value) - Number(a.id === value));
-  }, [filtered, query, value]);
+      .sort(
+        (a, b) =>
+          Number(b.id === recommendedId) - Number(a.id === recommendedId) ||
+          Number(b.id === value) - Number(a.id === value),
+      );
+  }, [filtered, query, value, original, recommendedId]);
 
   const play = (voice: VideoVoice) => {
     const audio = audioRef.current;
@@ -95,6 +114,13 @@ export function VoicePicker({
                 />
                 <span>
                   <strong>{voice.name}</strong>
+                  {voice.id === recommendedId && (
+                    <span className={styles.recommended}>
+                      ★ Recomendada: voz original del avatar
+                      {foreign &&
+                        ` (catalogada en ${original.language || 'otro idioma'}: dirá el guion en español, pero escúchala; puede tener acento)`}
+                    </span>
+                  )}
                   <span className={styles.voiceMeta}>
                     {[
                       voice.language,

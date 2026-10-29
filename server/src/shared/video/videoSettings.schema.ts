@@ -26,6 +26,16 @@ export const videoBackgroundSchema = z.discriminatedUnion('type', [
 ]);
 export type VideoBackgroundSetting = z.infer<typeof videoBackgroundSchema>;
 
+export const LOGO_POSITIONS = ['top-right', 'top-left', 'bottom-right', 'bottom-left'] as const;
+export const LOGO_SIZES = ['small', 'medium', 'large'] as const;
+
+/** Dónde y de qué tamaño va el logo en TODAS las escenas de la edición automática. */
+export const logoPlacementSchema = z.object({
+  position: z.enum(LOGO_POSITIONS),
+  size: z.enum(LOGO_SIZES),
+});
+export type LogoPlacement = z.infer<typeof logoPlacementSchema>;
+
 /** Constancia de que la persona que representa un avatar autorizó el uso de su imagen y voz. */
 export const avatarAuthorizationSchema = z.object({
   confirmed: z.literal(true, {
@@ -50,6 +60,7 @@ export const videoSettingsSchema = z.object({
   durationSeconds: z.union(VIDEO_DURATIONS.map((value) => z.literal(value))),
   /** Kit de marca del proveedor (colores, fuentes y logo) para la edición automática. */
   brandKitId: providerId.nullable(),
+  logo: logoPlacementSchema,
   /** Reglas que el guion debe cumplir siempre (p. ej. no prometer resultados). Tienen prioridad. */
   complianceRules: z.string().trim().max(3000),
   authorizations: z.record(providerId, avatarAuthorizationSchema),
@@ -67,6 +78,7 @@ export const DEFAULT_VIDEO_SETTINGS: VideoSettings = {
   aspectRatio: '9:16',
   durationSeconds: 30,
   brandKitId: null,
+  logo: { position: 'top-right', size: 'medium' },
   complianceRules: '',
   authorizations: {},
 };

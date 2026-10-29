@@ -8,13 +8,21 @@ import { Page, Section } from '../ui/Page';
 import { Spinner } from '../ui/Spinner';
 import { Stepper } from '../ui/Stepper';
 import { BrandForm } from './BrandForm';
+import { BrandKitStep } from './BrandKitStep';
 import { CredentialsForm } from './CredentialsForm';
+import { DigitalTwinSection } from './DigitalTwinSection';
 import { VideoSettingsForm } from './VideoSettingsForm';
 
-const STEPS = ['Credenciales', 'Marca', 'Video'] as const;
-const VIDEO_STEP = 2;
+const STEPS = ['Credenciales', 'Marca', 'Kit de marca', 'Video'] as const;
+const KIT_STEP = 2;
+const VIDEO_STEP = 3;
 /** Permite abrir un paso concreto desde otra pantalla, p. ej. /setup?paso=credenciales. */
-const STEP_PARAM: Record<string, number> = { credenciales: 0, marca: 1, video: VIDEO_STEP };
+const STEP_PARAM: Record<string, number> = {
+  credenciales: 0,
+  marca: 1,
+  kit: KIT_STEP,
+  video: VIDEO_STEP,
+};
 
 export default function SetupPage() {
   const navigate = useNavigate();
@@ -72,11 +80,21 @@ export default function SetupPage() {
           {brand.isPending ? (
             <Spinner label="Cargando archivos de marca" />
           ) : (
-            <BrandForm
-              current={brand.data}
-              onDone={() => (videoConfigured ? setChosenStep(VIDEO_STEP) : navigate('/'))}
-            />
+            <BrandForm current={brand.data} onDone={() => setChosenStep(KIT_STEP)} />
           )}
+        </Section>
+      ) : step === KIT_STEP ? (
+        <Section
+          title="Kit de marca"
+          description="Logo, colores, slogans, logos de asociaciones y kit de HeyGen en un solo lugar. Todo el contenido los usa."
+        >
+          <BrandKitStep />
+          <Button
+            variant="ghost"
+            onClick={() => (videoConfigured ? setChosenStep(VIDEO_STEP) : navigate('/'))}
+          >
+            {videoConfigured ? 'Continuar a video' : 'Ir al inicio'}
+          </Button>
         </Section>
       ) : (
         <Section
@@ -84,7 +102,10 @@ export default function SetupPage() {
           description="Opcional. Cómo serán los reels: avatar, voz, fondo, formato y autorizaciones de imagen."
         >
           {videoConfigured ? (
-            <VideoSettingsForm onDone={() => navigate('/')} />
+            <>
+              <DigitalTwinSection />
+              <VideoSettingsForm onDone={() => navigate('/')} />
+            </>
           ) : (
             <>
               <Alert tone="info">

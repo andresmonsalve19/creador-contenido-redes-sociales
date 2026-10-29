@@ -4,3 +4,4 @@ server/data
 .agents
 .claude
 package-lock.json
+server/build

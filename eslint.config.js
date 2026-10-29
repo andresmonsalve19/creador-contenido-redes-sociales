@@ -53,11 +53,11 @@ const moduleBoundaries = {
 };
 
 export default tseslint.config(
-  { ignores: ['**/dist', '**/node_modules', 'server/data', '.agents', '.claude'] },
+  { ignores: ['**/dist', '**/node_modules', 'server/data', 'server/build', '.agents', '.claude'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['server/**/*.ts', '*.js'],
+    files: ['server/**/*.ts', 'server/scripts/**/*.mjs', '*.js'],
     languageOptions: { globals: globals.node },
   },
   {

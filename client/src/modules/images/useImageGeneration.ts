@@ -20,6 +20,21 @@ export function useImageGeneration(state: WizardState, dispatch: Dispatch<Wizard
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
+  /** Cada imagen se guarda en la biblioteca en cuanto se genera (o se ajusta). */
+  const libraryFor = useCallback(
+    (index: number) =>
+      state.publicationId && state.prompts
+        ? {
+            publicationId: state.publicationId,
+            index,
+            format: state.format,
+            title: state.topic.trim().slice(0, 200),
+            caption: state.prompts.caption,
+          }
+        : undefined,
+    [state.publicationId, state.prompts, state.format, state.topic],
+  );
+
   const generate = useCallback(
     async (indices: number[]) => {
       const { prompts, imageModel, aspectRatio, format, results } = state;
@@ -52,6 +67,7 @@ export function useImageGeneration(state: WizardState, dispatch: Dispatch<Wizard
               role: slide.role,
               prompt: slide.prompt,
               styleReference: index === 0 ? undefined : styleReference,
+              library: libraryFor(index),
             },
             controller.signal,
           );
@@ -80,7 +96,7 @@ export function useImageGeneration(state: WizardState, dispatch: Dispatch<Wizard
         setRunning(false);
       }
     },
-    [state, dispatch],
+    [state, dispatch, libraryFor],
   );
 
   /**
@@ -124,6 +140,7 @@ export function useImageGeneration(state: WizardState, dispatch: Dispatch<Wizard
             prompt,
             styleReference,
             ...(mode === 'image' ? { previousImage: current.image, feedback } : {}),
+            library: libraryFor(index),
           },
           controller.signal,
         );
@@ -139,7 +156,7 @@ export function useImageGeneration(state: WizardState, dispatch: Dispatch<Wizard
         }
       }
     },
-    [state, dispatch],
+    [state, dispatch, libraryFor],
   );
 
   const cancel = useCallback(() => {

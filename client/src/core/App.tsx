@@ -7,6 +7,7 @@ import { ModuleRoute } from './pages/ModuleRoute';
 const SetupPage = lazy(() => import('../shared/setup/SetupPage'));
 const HomePage = lazy(() => import('./pages/HomePage'));
 const CreatePage = lazy(() => import('./pages/CreatePage'));
+const LibraryPage = lazy(() => import('../shared/library/LibraryPage'));
 
 export function App() {
   return (
@@ -17,6 +18,7 @@ export function App() {
           <Route index element={<HomePage />} />
           <Route path="crear" element={<CreatePage />} />
           <Route path="crear/:modulePath" element={<ModuleRoute />} />
+          <Route path="biblioteca" element={<LibraryPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

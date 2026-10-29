@@ -1,5 +1,6 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import { IMAGE_FLOW_STEPS } from '../modules/images/meta';
+import { IMAGE_EDIT_STEPS } from '../modules/imageEdit/meta';
 import { REEL_FLOW_STEPS } from '../modules/reels/meta';
 
 export interface ClientModule {
@@ -28,6 +29,15 @@ export const clientModules: readonly ClientModule[] = [
     enabled: true,
     steps: IMAGE_FLOW_STEPS,
     Page: lazy(() => import('../modules/images')),
+  },
+  {
+    id: 'imageEdit',
+    path: 'editar-imagen',
+    label: 'Editar una imagen tuya',
+    description: 'Sube una foto o imagen y dile a la IA qué cambiar, con tu marca.',
+    enabled: true,
+    steps: IMAGE_EDIT_STEPS,
+    Page: lazy(() => import('../modules/imageEdit')),
   },
   {
     id: 'reels',

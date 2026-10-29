@@ -7,11 +7,13 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/core/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json",
-    "test": "node --import tsx --test test/heygenClient.test.ts test/jobRunner.test.ts test/reelsHelpers.test.ts",
-    "probar:heygen": "tsx scripts/probarHeygen.ts"
+    "test": "node --import tsx --test test/heygenClient.test.ts test/jobRunner.test.ts test/reelsHelpers.test.ts test/library.test.ts test/imageEdit.test.ts test/brandHistory.test.ts",
+    "probar:heygen": "tsx scripts/probarHeygen.ts",
+    "mcpb": "node scripts/build-mcpb.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "dotenv": "^17.2.0",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
@@ -20,9 +22,11 @@
     "zod": "^4.1.0"
   },
   "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2",
     "@types/express": "^5.0.3",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.0.0",
+    "esbuild": "0.28.2",
     "tsx": "^4.20.0"
   }
 }

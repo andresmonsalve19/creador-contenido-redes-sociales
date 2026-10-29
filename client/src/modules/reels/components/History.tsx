@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { errorMessage } from '../../../shared/api/client';
 import { Alert } from '../../../shared/ui/Alert';
 import { deleteJob, fetchJobs, jobsKey, requestDuplicate } from '../api';
-import { STATUS_LABEL, isActiveJob, type VideoSpec } from '../types';
+import { STATUS_LABEL, canEditScenes, isActiveJob, type VideoSpec } from '../types';
+import { SceneEditor } from './SceneEditor';
 import styles from '../reels.module.css';
 
 const date = new Intl.DateTimeFormat('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
@@ -78,6 +79,7 @@ export function History({ onDuplicate }: HistoryProps) {
                 </button>
               )}
             </span>
+            {canEditScenes(job) && <SceneEditor job={job} />}
           </li>
         ))}
       </ul>

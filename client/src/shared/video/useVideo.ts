@@ -55,3 +55,16 @@ export function useVoices(language: string, enabled = true) {
     enabled,
   });
 }
+
+/** Una voz por id: la voz original de un avatar, aunque no esté en la lista del idioma. */
+export function useVoice(id: string | null | undefined) {
+  return useQuery({
+    queryKey: ['video', 'voice', id],
+    queryFn: ({ signal }) =>
+      api<{ voice: VideoVoice }>(`/video/voices/${encodeURIComponent(id ?? '')}`, {
+        signal,
+      }).then((r) => r.voice),
+    staleTime: Infinity,
+    enabled: Boolean(id),
+  });
+}

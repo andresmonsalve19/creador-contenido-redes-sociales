@@ -37,6 +37,7 @@ if not exist "node_modules\.package-lock.json" (
 set "NEEDS_BUILD="
 if not exist "server\dist\core\index.js" set "NEEDS_BUILD=1"
 if not exist "client\dist\index.html" set "NEEDS_BUILD=1"
+if not exist "server\dist\mcp\index.js" set "NEEDS_BUILD=1"
 if defined NEEDS_BUILD (
   echo   [3 de 3] Preparando la aplicacion - solo la primera vez
   call npm run build --silent

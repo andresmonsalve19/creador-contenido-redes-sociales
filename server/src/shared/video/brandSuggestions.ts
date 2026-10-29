@@ -67,3 +67,54 @@ export function websiteFrom(company: string): string | null {
     );
   return match ? `https://${match[1]}` : null;
 }
+
+export interface VoiceHint {
+  prompt: string;
+  gender: 'female' | 'male' | null;
+  locale: string | null;
+}
+
+const ACCENTS: [RegExp, string][] = [
+  [/colombia/i, 'es-CO'],
+  [/m[eé]xic/i, 'es-MX'],
+  [/argentin/i, 'es-AR'],
+  [/espa[ñn]a|castellan|peninsular/i, 'es-ES'],
+  [/chile/i, 'es-CL'],
+  [/per[uú]/i, 'es-PE'],
+];
+
+/**
+ * Descripción de la voz tomada de los lineamientos de video (la primera línea que describe la
+ * voz), con el género y el acento que se deducen del texto. Sin lineamientos, una descripción
+ * genérica.
+ */
+export function voiceHintFrom(videoGuidelines: string | null): VoiceHint {
+  // Solo líneas de texto: sin títulos ni filas de tabla.
+  const lines = (videoGuidelines ?? '')
+    .split(/\r?\n/)
+    .filter((text) => !/^\s*(#|\|)/.test(text))
+    .map((text) =>
+      text
+        .replace(/`?\[CONFIRMAR[^\]]*\]`?/gi, '')
+        .replace(/^\s*[-*>]\s*/, '')
+        .replace(/[*_`]/g, '')
+        .trim(),
+    );
+  const line =
+    lines.find((text) => /^voz\b/i.test(text) && text.split(/\s+/).length >= 4) ??
+    lines.find(
+      (text) =>
+        /\bvoz\b/i.test(text) && /femenin|masculin|c[aá]lid|acento|tono|grave|aguda/i.test(text),
+    );
+  const prompt = (line ?? 'Voz cálida, clara y cercana, en español, con ritmo pausado.')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([.,;:])/g, '$1')
+    .slice(0, 1000);
+  const gender = /femenin|mujer/i.test(prompt)
+    ? 'female'
+    : /masculin|hombre/i.test(prompt)
+      ? 'male'
+      : null;
+  const locale = ACCENTS.find(([pattern]) => pattern.test(prompt))?.[1] ?? null;
+  return { prompt, gender, locale };
+}

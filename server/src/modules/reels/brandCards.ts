@@ -107,6 +107,49 @@ async function logoPanel(logo: Buffer, maxWidth: number, maxHeight: number) {
   return { panel, width, height };
 }
 
+/**
+ * Franja blanca con los logos de las asociaciones, uno al lado del otro y sin alterarlos. Así
+ * aparecen exactos en el cierre, sin depender de que la IA los dibuje.
+ */
+async function partnersStrip(logos: Buffer[], maxWidth: number, logoHeight: number) {
+  const padding = Math.round(logoHeight * 0.35);
+  const gap = Math.round(logoHeight * 0.5);
+  const slot = Math.floor((maxWidth - padding * 2 - gap * (logos.length - 1)) / logos.length);
+  const resized = await Promise.all(
+    logos.map((logo) =>
+      sharp(logo)
+        .resize({ width: slot, height: logoHeight, fit: 'inside' })
+        .png()
+        .toBuffer({ resolveWithObject: true }),
+    ),
+  );
+  const width =
+    resized.reduce((sum, logo) => sum + logo.info.width, 0) +
+    gap * (logos.length - 1) +
+    padding * 2;
+  const height = logoHeight + padding * 2;
+  const radius = Math.round(height * 0.2);
+  let left = padding;
+  const layers = resized.map((logo) => {
+    const layer = {
+      input: logo.data,
+      left,
+      top: padding + Math.round((logoHeight - logo.info.height) / 2),
+    };
+    left += logo.info.width + gap;
+    return layer;
+  });
+  const strip = await sharp(
+    Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="${width}" height="${height}" rx="${radius}" fill="#FFFFFF"/></svg>`,
+    ),
+  )
+    .composite(layers)
+    .png()
+    .toBuffer();
+  return { strip, width, height };
+}
+
 function base(width: number, height: number, color: string) {
   return sharp({ create: { width, height, channels: 3, background: color } });
 }
@@ -129,9 +172,14 @@ export async function renderIntroCard({ aspectRatio, color, logo }: CardInput): 
 
 /** Tarjeta de cierre: logo, llamado a la acción y datos de contacto escritos exactamente. */
 export async function renderOutroCard(
-  input: CardInput & { cta: string; contact: Contact },
+  input: CardInput & {
+    cta: string;
+    contact: Contact;
+    /** Logos de asociaciones que respaldan a la marca (opcional). */
+    partners?: Buffer[];
+  },
 ): Promise<Buffer> {
-  const { aspectRatio, color, logo, cta, contact } = input;
+  const { aspectRatio, color, logo, cta, contact, partners = [] } = input;
   const [width, height] = SIZES[aspectRatio];
   const landscape = width > height;
   const textColor = textColorFor(color);
@@ -167,14 +215,36 @@ export async function renderOutroCard(
   ];
   const textHeight = lines.reduce((sum, line) => sum + line.gap, 0) + infoSize;
 
-  // Logo arriba y texto debajo, el conjunto centrado verticalmente.
+  // Logo arriba, texto y franja de asociaciones debajo; el conjunto centrado verticalmente.
   const spacing = Math.round(height * 0.05);
-  const blockTop = Math.max(0, Math.round((height - (ph + spacing + textHeight)) / 2));
+  const strip =
+    partners.length > 0
+      ? await partnersStrip(
+          partners,
+          Math.round(width * 0.84),
+          Math.round(Math.min(width, height) * 0.075),
+        )
+      : null;
+  const stripHeight = strip ? spacing + strip.height : 0;
+  const blockTop = Math.max(
+    0,
+    Math.round((height - (ph + spacing + textHeight + stripHeight)) / 2),
+  );
+  const textTop = blockTop + ph + spacing;
 
   return base(width, height, color)
     .composite([
       { input: panel, left: Math.round((width - pw) / 2), top: blockTop },
-      { input: textSvg(width, height, blockTop + ph + spacing, lines, textColor), left: 0, top: 0 },
+      { input: textSvg(width, height, textTop, lines, textColor), left: 0, top: 0 },
+      ...(strip
+        ? [
+            {
+              input: strip.strip,
+              left: Math.round((width - strip.width) / 2),
+              top: Math.min(height - strip.height, textTop + textHeight + spacing),
+            },
+          ]
+        : []),
     ])
     .png()
     .toBuffer();

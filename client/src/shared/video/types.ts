@@ -45,6 +45,24 @@ export interface AvatarAuthorization {
   date: string;
 }
 
+export interface LogoPlacement {
+  position: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+  size: 'small' | 'medium' | 'large';
+}
+
+export const LOGO_POSITIONS: { value: LogoPlacement['position']; label: string }[] = [
+  { value: 'top-right', label: 'Arriba a la derecha' },
+  { value: 'top-left', label: 'Arriba a la izquierda' },
+  { value: 'bottom-right', label: 'Abajo a la derecha' },
+  { value: 'bottom-left', label: 'Abajo a la izquierda' },
+];
+
+export const LOGO_SIZES: { value: LogoPlacement['size']; label: string }[] = [
+  { value: 'small', label: 'Pequeño' },
+  { value: 'medium', label: 'Mediano' },
+  { value: 'large', label: 'Grande' },
+];
+
 export interface VideoSettings {
   defaultAvatarId: string | null;
   defaultVoiceId: string | null;
@@ -58,6 +76,8 @@ export interface VideoSettings {
   complianceRules: string;
   /** Kit de marca de HeyGen para la edición automática. */
   brandKitId: string | null;
+  /** Posición y tamaño del logo en todas las escenas de la edición automática. */
+  logo: LogoPlacement;
   authorizations: Record<string, AvatarAuthorization>;
 }
 

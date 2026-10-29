@@ -18,6 +18,8 @@ export interface ScriptContext {
   videoGuidelines: string | null;
   company: string;
   design: string;
+  /** Slogans, frases e identidad de la marca, ya formateados (vacío si no hay). */
+  identity?: string;
   /** Reglas aprendidas de categoría video o general. */
   learning: string[];
 }
@@ -82,6 +84,7 @@ function contextBlocks(context: ScriptContext): string {
     '# 3. Información de la empresa y lineamientos generales',
     dataBlock('empresa', context.company),
     dataBlock('lineamientos', context.design),
+    context.identity ? `\n${context.identity}` : '',
     '',
     '# 4. Aprendizajes previos',
     context.learning.length > 0

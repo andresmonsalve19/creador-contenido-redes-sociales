@@ -181,3 +181,57 @@
   color: var(--ink-soft);
   font-size: var(--text-sm);
 }
+
+.recommended {
+  color: var(--success);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.recommender {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-4);
+  border: 1.5px dashed var(--line);
+  border-radius: var(--radius-md);
+}
+
+.recommender h4 {
+  margin: 0;
+  font-weight: 600;
+}
+
+.designer {
+  width: 100%;
+}
+
+.designer summary {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+}
+
+.designer[open] summary {
+  margin-bottom: var(--space-3);
+}
+
+.confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.confirm input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.1rem;
+  flex-shrink: 0;
+  accent-color: var(--signal);
+}

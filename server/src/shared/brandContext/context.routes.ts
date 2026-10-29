@@ -1,14 +1,33 @@
-import { Router } from 'express';
+import express, { Router } from 'express';
+import { z } from 'zod';
 import multer from 'multer';
 import { badRequest } from '../http/errors.js';
+import { AppError } from '../http/errors.js';
 import { localOnly } from '../http/localOnly.js';
+import { validate } from '../http/validate.js';
+import { paletteFrom } from '../video/brandSuggestions.js';
+import {
+  PARTNER_USAGES,
+  addPartner,
+  identityTextSchema,
+  isPartnerLogoType,
+  readIdentity,
+  readPartnerLogo,
+  removePartner,
+  saveIdentityText,
+  updatePartner,
+  type Identity,
+} from './identityStore.js';
+import { listVersions, readVersion } from './brandHistory.js';
 import {
   LOGO_TYPES,
   isComplete,
   readLogo,
   readMarkdown,
   readMeta,
+  restoreVersion,
   saveBrand,
+  saveMarkdown,
   type BrandUpload,
   type LogoMimeType,
 } from './contextStore.js';
@@ -100,3 +119,118 @@ contextRouter.put(
     res.json({ complete: isComplete(meta) });
   },
 );
+
+// --- Kit de marca: slogans, frases, identidad y logos de asociaciones ------------------------
+
+const json = express.json({ limit: '100kb' });
+
+/** Lo que ve el cliente: cada logo de asociación con su URL. */
+const publicIdentity = (identity: Identity) => ({
+  ...identity,
+  partners: identity.partners.map((partner) => ({
+    ...partner,
+    logoUrl: `/api/context/identity/partners/${partner.id}/logo?v=${encodeURIComponent(partner.updatedAt)}`,
+  })),
+});
+
+contextRouter.get('/identity', async (_req, res) => {
+  const [identity, design] = await Promise.all([readIdentity(), readMarkdown('design')]);
+  // Los colores salen de los lineamientos de diseño: se muestran para tenerlos a la vista.
+  res.json({ identity: publicIdentity(identity), palette: paletteFrom(design ?? '') });
+});
+
+contextRouter.put('/identity', localOnly, json, async (req, res) => {
+  const text = validate(identityTextSchema, req.body);
+  const { identity, backupId } = await saveIdentityText(text);
+  res.json({ identity: publicIdentity(identity), backupId });
+});
+
+const partnerFields = z.object({
+  name: z.string().trim().min(2, 'Escribe el nombre de la asociación.').max(120),
+  usage: z.enum(PARTNER_USAGES),
+});
+const partnerParams = z.object({ id: z.uuid('Ese logo no existe.') });
+
+contextRouter.post('/identity/partners', localOnly, upload.single('logo'), async (req, res) => {
+  const file = req.file;
+  if (!file) throw badRequest('Adjunta el logo de la asociación.');
+  if (!isPartnerLogoType(file.mimetype)) throw badRequest('El logo debe ser PNG o JPG.');
+  const fields = validate(partnerFields, req.body);
+  try {
+    const identity = await addPartner({ ...fields, mimeType: file.mimetype, data: file.buffer });
+    res.status(201).json({ identity: publicIdentity(identity) });
+  } catch (error) {
+    throw badRequest(error instanceof Error ? error.message : 'No se pudo guardar el logo.');
+  }
+});
+
+contextRouter.patch('/identity/partners/:id', localOnly, json, async (req, res) => {
+  const { id } = validate(partnerParams, req.params);
+  const identity = await updatePartner(id, validate(partnerFields, req.body));
+  if (!identity) throw new AppError(404, 'Ese logo no existe.', 'NOT_FOUND');
+  res.json({ identity: publicIdentity(identity) });
+});
+
+contextRouter.delete('/identity/partners/:id', localOnly, async (req, res) => {
+  const { id } = validate(partnerParams, req.params);
+  res.json({ identity: publicIdentity(await removePartner(id)) });
+});
+
+contextRouter.get('/identity/partners/:id/logo', async (req, res) => {
+  const { id } = validate(partnerParams, req.params);
+  const partner = (await readIdentity()).partners.find((p) => p.id === id);
+  const data = partner ? await readPartnerLogo(partner) : null;
+  if (!partner || !data) throw new AppError(404, 'Ese logo no existe.', 'NOT_FOUND');
+  res
+    .type(partner.mimeType)
+    .set('Cache-Control', 'private, max-age=31536000, immutable')
+    .send(data);
+});
+
+// --- Edición de los archivos de marca (p. ej. mejorados por Claude) e historial --------------
+
+const markdownBody = z.object({
+  content: z
+    .string()
+    .trim()
+    .min(50, 'El archivo quedó casi vacío.')
+    .refine(
+      (text) => Buffer.byteLength(text) <= MAX_MARKDOWN_BYTES,
+      'El archivo supera los 300 KB.',
+    ),
+});
+const kindParams = z.object({ kind: z.enum(['company', 'design', 'videoGuidelines']) });
+
+/** Reemplaza un archivo de marca. Antes guarda una copia del actual (devuelve su id). */
+contextRouter.put(
+  '/markdown/:kind',
+  localOnly,
+  express.json({ limit: '400kb' }),
+  async (req, res) => {
+    const { kind } = validate(kindParams, req.params);
+    const { content } = validate(markdownBody, req.body);
+    res.json({ backupId: await saveMarkdown(kind, content) });
+  },
+);
+
+contextRouter.get('/versions', async (_req, res) => {
+  res.json({ versions: await listVersions() });
+});
+
+const versionParams = z.object({
+  id: z.string().regex(/^[\w.-]{1,80}$/, 'Esa versión no existe.'),
+});
+
+contextRouter.get('/versions/:id', async (req, res) => {
+  const { id } = validate(versionParams, req.params);
+  const version = await readVersion(id);
+  if (!version) throw new AppError(404, 'Esa versión no existe.', 'NOT_FOUND');
+  res.json(version);
+});
+
+contextRouter.post('/versions/:id/restore', localOnly, async (req, res) => {
+  const { id } = validate(versionParams, req.params);
+  const restored = await restoreVersion(id);
+  if (!restored) throw new AppError(404, 'Esa versión no existe.', 'NOT_FOUND');
+  res.json(restored);
+});

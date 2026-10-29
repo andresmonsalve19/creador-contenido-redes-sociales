@@ -2,6 +2,7 @@ import { useId, useMemo, useState } from 'react';
 import { Button } from '../ui/Button';
 import { TextField } from '../ui/TextField';
 import { genderOf } from './gender';
+import { useAvatarRecommendations } from './recommend';
 import { AVATAR_TYPE_LABEL, requiresAuthorization, type VideoAvatar } from './types';
 import styles from './VideoPickers.module.css';
 
@@ -61,16 +62,25 @@ export function AvatarPicker({
   const [visible, setVisible] = useState(PAGE);
   const [previewId, setPreviewId] = useState<string | null>(value[0] ?? null);
 
+  const recommendations = useAvatarRecommendations(avatars);
+  const [onlyRecommended, setOnlyRecommended] = useState(false);
+
   const ordered = useMemo(() => {
     const pinned = new Set([...value, ...pinnedIds]);
     const text = query.trim().toLowerCase();
-    return avatars
-      .filter((avatar) => filter === 'all' || avatar.ownership === filter)
-      .filter((avatar) => gender === 'all' || genderOf(avatar) === gender)
-      .filter((avatar) => type === 'all' || avatar.type === type)
-      .filter((avatar) => !text || avatar.name.toLowerCase().includes(text))
-      .sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)));
-  }, [avatars, filter, gender, type, query, value, pinnedIds]);
+    const score = (avatar: VideoAvatar) =>
+      (pinned.has(avatar.id) ? 100 : 0) + (recommendations.get(avatar.id)?.score ?? 0);
+    return (
+      avatars
+        .filter((avatar) => !onlyRecommended || recommendations.has(avatar.id))
+        .filter((avatar) => filter === 'all' || avatar.ownership === filter)
+        .filter((avatar) => gender === 'all' || genderOf(avatar) === gender)
+        .filter((avatar) => type === 'all' || avatar.type === type)
+        .filter((avatar) => !text || avatar.name.toLowerCase().includes(text))
+        // Primero los elegidos y luego los recomendados para español.
+        .sort((a, b) => score(b) - score(a))
+    );
+  }, [avatars, filter, gender, type, query, value, pinnedIds, recommendations, onlyRecommended]);
 
   // El filtro por tipo solo se muestra si hay avatares de más de un tipo.
   const showTypes = new Set(avatars.map((avatar) => avatar.type)).size > 1;
@@ -107,6 +117,21 @@ export function AvatarPicker({
           }}
           placeholder="Nombre del avatar"
         />
+        {recommendations.size > 0 && (
+          <div className={styles.filters}>
+            <button
+              type="button"
+              className={styles.chip}
+              aria-pressed={onlyRecommended}
+              onClick={() => {
+                setOnlyRecommended((current) => !current);
+                setVisible(PAGE);
+              }}
+            >
+              ★ Solo recomendados para español ({recommendations.size})
+            </button>
+          </div>
+        )}
         <div className={styles.filters} role="group" aria-label="Filtrar avatares">
           {FILTERS.map((option) => (
             <button
@@ -175,6 +200,8 @@ export function AvatarPicker({
           ) : null}
           <p>
             <strong>{preview.name}</strong> · {AVATAR_TYPE_LABEL[preview.type]}
+            {recommendations.has(preview.id) &&
+              ` · ★ Recomendado: ${recommendations.get(preview.id)?.reason}`}
             {requiresAuthorization(preview) && ' · requiere autorización de imagen'}
           </p>
         </div>
@@ -209,6 +236,11 @@ export function AvatarPicker({
                       : AVATAR_TYPE_LABEL[avatar.type]}
                     {requiresAuthorization(avatar) && ' · autorización'}
                   </span>
+                  {recommendations.has(avatar.id) && (
+                    <span className={styles.recommended}>
+                      ★ {recommendations.get(avatar.id)?.reason}
+                    </span>
+                  )}
                 </label>
               </li>
             );

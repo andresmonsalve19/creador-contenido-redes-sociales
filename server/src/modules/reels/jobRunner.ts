@@ -27,6 +27,8 @@ export interface JobRunnerDeps {
   loadBackground: (background: SceneBackgroundSpec) => Promise<BackgroundFile>;
   /** Logo de la marca en PNG o JPEG para adjuntarlo al agente de video (null si no hay). */
   loadLogo?: () => Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer } | null>;
+  /** Logos de asociaciones para adjuntarlos al agente después del logo de la marca. */
+  loadPartnerLogos?: () => Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer }[]>;
   /** Carpeta donde se guardan los MP4 (data/reels). */
   reelsDir: string;
   /** Tiempo máximo esperando a que el proveedor termine un render. */
@@ -58,6 +60,7 @@ export function createJobRunner(deps: JobRunnerDeps) {
     getProvider,
     loadBackground,
     loadLogo = async () => null,
+    loadPartnerLogos = async () => [],
     reelsDir,
     timeoutMs,
     maxActive = 2,
@@ -267,7 +270,7 @@ export function createJobRunner(deps: JobRunnerDeps) {
     if (!agent) throw new Error('Falta el guion para el agente de video.');
 
     if (!agent.sessionId) {
-      const logo = await loadLogo();
+      const [logo, partners] = await Promise.all([loadLogo(), loadPartnerLogos()]);
       const presenter = job.spec.scenes.find((scene) => scene.kind === 'avatar');
       // Crear la sesión no es idempotente: solo se reintenta si el proveedor pidió esperar
       // (429), porque en ese caso no creó nada.
@@ -279,7 +282,7 @@ export function createJobRunner(deps: JobRunnerDeps) {
           voiceId: presenter?.voiceId || null,
           brandKitId: job.spec.brandKitId ?? null,
           orientation: job.spec.aspectRatio === '16:9' ? 'landscape' : 'portrait',
-          files: logo ? [logo] : [],
+          files: [...(logo ? [logo] : []), ...partners],
         }),
       );
       job = await store.update(job.id, {
@@ -315,13 +318,18 @@ export function createJobRunner(deps: JobRunnerDeps) {
       const current = job.agent ?? agent;
 
       if (session.status === 'failed') {
-        const reason = session.messages.find((m) => m.type === 'error' || m.role === 'model');
+        // Primero el motivo que informa HeyGen; si no lo da, un mensaje de error del agente.
+        const reason =
+          session.error?.message ?? session.messages.find((m) => m.type === 'error')?.content;
+        const quota = session.error?.code === 'free_tier_quota_exceeded';
         throw new VideoProviderError(502, {
           proveedor: provider.id,
-          codigo: 'agent_failed',
-          mensaje: reason?.content
-            ? `El agente de HeyGen no pudo continuar: ${reason.content}`
-            : 'El agente de HeyGen no pudo continuar.',
+          codigo: session.error?.code ?? 'agent_failed',
+          mensaje: quota
+            ? 'Tu plan de HeyGen llegó a su límite de videos. Para seguir generando, mejora el plan en heygen.com (no se cobró este video).'
+            : reason
+              ? `El agente de HeyGen no pudo continuar: ${reason}`
+              : 'El agente de HeyGen no pudo continuar.',
           reintentable: false,
         });
       }

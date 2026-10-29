@@ -1,16 +1,24 @@
 import express, { Router } from 'express';
-import { assertModel } from '../../shared/ai/modelService.js';
+import { promises as fs } from 'node:fs';
+import { assertModel, listModels } from '../../shared/ai/modelService.js';
 import { parseModelJson } from '../../shared/ai/parseModelJson.js';
 import { getProvider } from '../../shared/ai/providers/index.js';
 import { getBrandContext } from '../../shared/brandContext/contextStore.js';
-import { AppError } from '../../shared/http/errors.js';
+import { AppError, badRequest, notReady } from '../../shared/http/errors.js';
 import { validate } from '../../shared/http/validate.js';
+import {
+  getLibraryStore,
+  isLibraryImageType,
+  newLibraryId,
+} from '../../shared/library/libraryStore.js';
+import { closestAspectRatio, editImage } from './imageEditor.js';
 import { assembleCaption } from '../../shared/publishing/caption.js';
 import { formatRulesForPrompt, readRulesFor } from '../../shared/learning/learningStore.js';
 import { generateBrandImage } from './imageGenerator.js';
 import { PROMPTS_JSON_SCHEMA, buildImagePrompts } from './promptBuilder.js';
 import { REVISE_JSON_SCHEMA, buildRevisionPrompt } from './reviseBuilder.js';
 import {
+  editBody,
   generateBody,
   promptsBody,
   promptsResponseSchema,
@@ -74,5 +82,77 @@ imagesRouter.post('/generate', express.json({ limit: '30mb' }), async (req, res)
   await assertModel(body.imageModel, 'image');
   const brand = await getBrandContext();
   const image = await generateBrandImage(body, brand);
-  res.json({ image });
+
+  // Se guarda en la biblioteca para no perderla aunque no se descargue. Si falla el guardado,
+  // la imagen igual se entrega.
+  let saved = false;
+  if (body.library && isLibraryImageType(image.mimeType)) {
+    try {
+      await getLibraryStore().saveSlide({
+        id: body.library.publicationId,
+        kind: body.library.format,
+        source: body.library.source,
+        title: body.library.title,
+        caption: body.library.caption,
+        aspectRatio: body.aspectRatio,
+        index: body.library.index,
+        mimeType: image.mimeType,
+        data: Buffer.from(image.data, 'base64'),
+      });
+      saved = true;
+    } catch (error) {
+      console.error(
+        `No se pudo guardar la imagen en la biblioteca: ${error instanceof Error ? error.message : 'error desconocido'}`,
+      );
+    }
+  }
+  res.json({ image, saved });
+});
+
+/**
+ * Edita una imagen propia (subida o de la biblioteca) con instrucciones, opcionalmente con el
+ * logo, la paleta y la identidad de la marca. El resultado se guarda en la biblioteca.
+ */
+imagesRouter.post('/edit', express.json({ limit: '30mb' }), async (req, res) => {
+  const body = validate(editBody, req.body);
+  const model = body.imageModel ?? (await listModels('image')).recommendedId;
+  if (!model) throw notReady('Tu API key de Gemini no tiene modelos de imagen disponibles.');
+  await assertModel(model, 'image');
+
+  const store = getLibraryStore();
+  let image = body.image.type === 'upload' ? body.image.image : null;
+  if (body.image.type === 'library') {
+    const file = await store.slideFile(body.image.id, body.image.index);
+    if (!file) throw badRequest('Esa imagen ya no está en la biblioteca.');
+    image = { mimeType: file.mimeType, data: (await fs.readFile(file.path)).toString('base64') };
+  }
+  if (!image) throw badRequest('Adjunta la imagen que quieres editar.');
+
+  const aspectRatio =
+    body.aspectRatio === 'original' ? await closestAspectRatio(image) : body.aspectRatio;
+  const brand = body.applyBrand ? await getBrandContext() : null;
+  const result = await editImage({
+    model,
+    image,
+    instructions: body.instructions,
+    aspectRatio,
+    brand,
+  });
+
+  if (!isLibraryImageType(result.mimeType)) {
+    throw new AppError(502, 'El modelo devolvió un formato de imagen no admitido.');
+  }
+  const libraryId = body.libraryId ?? newLibraryId();
+  await store.saveSlide({
+    id: libraryId,
+    kind: 'edit',
+    source: body.source,
+    title: body.title || 'Imagen editada',
+    caption: '',
+    aspectRatio,
+    index: 0,
+    mimeType: result.mimeType,
+    data: Buffer.from(result.data, 'base64'),
+  });
+  res.json({ image: result, libraryId, aspectRatio });
 });

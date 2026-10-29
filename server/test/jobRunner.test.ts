@@ -114,6 +114,20 @@ function fakeProvider(overrides: Partial<VideoProvider> = {}) {
       messages: [],
     }),
     sendAgentMessage: async () => undefined,
+    getVideoScenes: async () => {
+      throw new Error('no usado');
+    },
+    editAgentScenes: async () => 'vid_editado',
+    uploadVideo: async () => 'asset_video',
+    createDigitalTwin: async () => ({ lookId: 'look_1', groupId: 'grupo_1', voiceId: null }),
+    getDigitalTwin: async () => {
+      throw new Error('no usado');
+    },
+    requestTwinConsent: async () => 'https://ejemplo.invalid/consentimiento',
+    createLookFromPrompt: async () => 'look_nuevo',
+    getLookState: async () => {
+      throw new Error('no usado');
+    },
     getAgentResource: async (_session, id) => ({
       id,
       type: 'image',
@@ -121,12 +135,17 @@ function fakeProvider(overrides: Partial<VideoProvider> = {}) {
       thumbnailUrl: null,
     }),
     listVoices: async () => [],
+    getVoice: async () => {
+      throw new Error('no usado');
+    },
+    designVoices: async () => [],
     uploadImage: async () => 'asset_001',
     createVideo: async (_request, key) => {
       created.push(key);
       return `vid_${key}`;
     },
     getVideo: async () => done,
+    listAccountVideos: async () => [],
     download: async () => new Response('contenido-mp4-ficticio'),
     ...overrides,
   };
@@ -397,6 +416,7 @@ describe('jobRunner', () => {
       progress: null,
       messages: [],
       storyboard: [],
+      edits: [],
     });
 
     it('crea la sesión en modo revisión y se detiene con el storyboard, sin generar', async () => {
@@ -491,6 +511,32 @@ describe('jobRunner', () => {
       assert.equal(sessions, 0);
       assert.equal(job?.providerVideoId, 'vid_agente');
       assert.equal(job?.status, 'completed');
+    });
+
+    it('tras un cambio por escena sigue el nuevo render sin crear otra sesión', async () => {
+      let sessions = 0;
+      const { provider } = fakeProvider({
+        createAgentSession: async () => {
+          sessions++;
+          return 'otra_sesion';
+        },
+      });
+      await store.save(
+        newJob('aaaaaaaa-0000-4000-8000-000000000009', {
+          spec: agentSpec,
+          status: 'processing',
+          providerVideoId: 'vid_editado',
+          agent: { ...agentState(), sessionId: 'sesion_001' },
+        }),
+      );
+      const r = runner(provider);
+      r.enqueue('aaaaaaaa-0000-4000-8000-000000000009');
+      await r.whenIdle();
+
+      const job = await store.get('aaaaaaaa-0000-4000-8000-000000000009');
+      assert.equal(sessions, 0);
+      assert.equal(job?.status, 'completed');
+      assert.ok(job?.file);
     });
 
     it('no reintenta crear la sesión ante un error que no sea de límite de tasa', async () => {

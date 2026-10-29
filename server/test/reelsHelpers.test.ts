@@ -23,12 +23,15 @@ import { assembleCaption } from '../src/shared/publishing/caption.js';
 import {
   paletteFrom,
   suggestColorRoles,
+  voiceHintFrom,
   websiteFrom,
 } from '../src/shared/video/brandSuggestions.js';
 import {
   avatarAuthorizationSchema,
   requiresAuthorization,
 } from '../src/shared/video/videoSettings.schema.js';
+import { buildVoiceDesignPrompt } from '../src/shared/video/voiceDesign.js';
+import { formatIdentityForPrompt } from '../src/shared/brandContext/identityStore.js';
 
 describe('estimación de duración', () => {
   it('calcula segundos por escena y cuánto se pasa', () => {
@@ -178,6 +181,36 @@ describe('estilo dinámico', () => {
   });
 });
 
+describe('identidad de la marca en los prompts', () => {
+  it('pide los slogans textuales y lista las asociaciones con su uso', () => {
+    const block = formatIdentityForPrompt({
+      slogans: ['Belleza con criterio médico'],
+      phrases: ['Tu caso es único'],
+      notes: 'Llamarla siempre "la doctora".',
+      partners: [
+        {
+          id: 'aaaaaaaa-0000-4000-8000-000000000001',
+          name: 'Sociedad de Ejemplo',
+          usage: 'always',
+          mimeType: 'image/png',
+          updatedAt: '2026-10-27T00:00:00.000Z',
+        },
+      ],
+    });
+    assert.match(block, /cópialos textualmente/);
+    assert.match(block, /<slogans>\n- "Belleza con criterio médico"\n<\/slogans>/);
+    assert.match(block, /Tu caso es único/);
+    assert.match(block, /Sociedad de Ejemplo \(su logo va en todas las piezas\)/);
+  });
+
+  it('sin datos de identidad no agrega nada', () => {
+    assert.equal(
+      formatIdentityForPrompt({ slogans: [], phrases: [], notes: '', partners: [] }),
+      '',
+    );
+  });
+});
+
 describe('tarjetas de marca', () => {
   const logo = () =>
     sharp({ create: { width: 400, height: 120, channels: 4, background: '#E8336D' } })
@@ -209,6 +242,19 @@ describe('tarjetas de marca', () => {
       [(await sharp(outro).metadata()).width, (await sharp(outro).metadata()).height],
       [1920, 1080],
     );
+  });
+
+  it('la tarjeta de cierre incluye los logos de asociaciones sin salirse del cuadro', async () => {
+    const outro = await renderOutroCard({
+      aspectRatio: '9:16',
+      color: '#0F2A5F',
+      logo: await logo(),
+      cta: 'Solicita tu diagnóstico',
+      contact: { email: '', website: 'empresa-ejemplo.com', whatsapp: '' },
+      partners: [await logo(), await logo()],
+    });
+    const meta = await sharp(outro).metadata();
+    assert.deepEqual([meta.width, meta.height], [1080, 1920]);
   });
 
   it('usa el color preferido o el primero de los lineamientos', () => {
@@ -268,6 +314,7 @@ describe('prompt del Video Agent', () => {
     const prompt = buildAgentPrompt(spec, {
       complianceRules: 'No prometer resultados.',
       hasLogoFile: true,
+      logo: { position: 'top-right', size: 'medium' },
     });
     assert.match(prompt, /30-second portrait \(9:16\)/);
     assert.match(prompt, /Follow the script below exactly/);
@@ -280,6 +327,8 @@ describe('prompt del Video Agent', () => {
     assert.match(prompt, /voice-over only/);
     assert.match(prompt, /"Agenda tu valoración"/);
     assert.match(prompt, /WhatsApp \+57 300 000 0000/);
+    assert.match(prompt, /Logo in EVERY scene.*top-right corner.*about 18% of the frame width/);
+    assert.match(prompt, /overrides any other logo instruction/);
     assert.ok(prompt.length <= 10_000);
   });
 
@@ -328,5 +377,36 @@ describe('texto de la publicación', () => {
       }),
       'Cuerpo del texto.\n\n🌐 empresa-ejemplo.com\n💬 WhatsApp: +57 300 000 0000\n\n#Marca #Tema',
     );
+  });
+});
+
+describe('descripción de la voz desde los lineamientos', () => {
+  it('toma la línea de la voz, quita las marcas de pendiente y deduce género y acento', () => {
+    const hint = voiceHintFrom(
+      '## Voz\n- Voz femenina, cálida y clara, con acento colombiano suave `[CONFIRMAR: voz]`.',
+    );
+    assert.equal(hint.prompt, 'Voz femenina, cálida y clara, con acento colombiano suave.');
+    assert.equal(hint.gender, 'female');
+    assert.equal(hint.locale, 'es-CO');
+  });
+
+  it('sin lineamientos usa una descripción genérica', () => {
+    const hint = voiceHintFrom(null);
+    assert.match(hint.prompt, /español/);
+    assert.equal(hint.gender, null);
+    assert.equal(hint.locale, null);
+  });
+});
+
+describe('buildVoiceDesignPrompt', () => {
+  it('pide la descripción en inglés con el acento elegido', () => {
+    const { system, prompt } = buildVoiceDesignPrompt('Voz femenina cálida', 'es-CO');
+    assert.match(system, /English/);
+    assert.match(prompt, /<description>Voz femenina cálida<\/description>/);
+    assert.match(prompt, /Colombian accent/);
+  });
+
+  it('sin acento, pide español latino neutro', () => {
+    assert.match(buildVoiceDesignPrompt('Voz grave').prompt, /neutral Latin American Spanish/);
   });
 });

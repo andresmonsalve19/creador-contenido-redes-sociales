@@ -6,6 +6,7 @@ import styles from './Navbar.module.css';
 const LINKS = [
   { to: '/', label: 'Inicio', end: true },
   { to: '/crear', label: 'Crear contenido', end: false },
+  { to: '/biblioteca', label: 'Mis contenidos', end: false },
 ] as const;
 
 export function Navbar() {

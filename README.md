@@ -22,6 +22,8 @@ HeyGen, con el guion escrito por la IA según la marca.
 6. [Archivos de marca](#archivos-de-marca)
 7. [Guía de uso](#guía-de-uso)
 8. [Reels con HeyGen](#reels-con-heygen)
+   - [Mis contenidos, kit de marca y edición de imágenes](#mis-contenidos-kit-de-marca-y-edición-de-imágenes)
+   - [Claude Desktop como director (piloto)](#claude-desktop-como-director-piloto)
 9. [Variables de entorno](#variables-de-entorno)
 10. [Scripts disponibles](#scripts-disponibles)
 11. [Arquitectura](#arquitectura)
@@ -400,6 +402,14 @@ En **Formato y temática** eliges el estilo:
     confirmación). El video se renderiza solo después de aprobar.
   - HeyGen no publica el precio del Video Agent por API ni si el storyboard consume créditos:
     revísalo en tu panel después de la primera prueba.
+  - **Logo:** en la configuración de video eliges su posición y tamaño (por defecto, arriba a la
+    derecha y mediano). El prompt lo exige en **todas** las escenas, igual en cada una, por encima
+    de cualquier otra instrucción sobre el logo.
+  - **Editar escenas** (video terminado, también desde "Reels anteriores"): la app lee las
+    escenas en HeyGen y envía cada cambio **una vez por cada escena marcada** (`edit_plan` de
+    "Edit Scenes"). Las demás quedan exactamente igual. Si una escena ya no existe, HeyGen rechaza
+    todo el pedido. Genera un video nuevo (consume saldo) que reemplaza al MP4 local; el anterior
+    sigue en la cuenta de HeyGen.
 
 - **Simple:** solo el presentador hablando a cámara.
 - **Escenas compuestas por la app**:
@@ -414,10 +424,21 @@ En **Formato y temática** eliges el estilo:
   - **Tomas variadas** (opcional): si el avatar de stock tiene otros looks en su grupo (otra pose o
     vestuario), cada vez que vuelve a aparecer usa uno distinto.
   - **Gestos:** cada escena del presentador trae gestos sugeridos; se envían como `motion_prompt`
-    solo si el avatar los admite (photo avatars, o avatares de video con Avatar V).
+    solo si el avatar los admite (photo avatars con Avatar IV, o avatares de video con Avatar V).
 
-La app elige para cada avatar un motor de render compatible (`supported_api_engines`): Avatar IV si
-lo admite; si no, Avatar III (por ejemplo, la mayoría de avatares de estudio de stock) o Avatar V.
+**Gemelo digital (Configuración → Video → "Tu propio avatar"):** sube un video de una persona real
+(MP4 o WebM, de 15 s a 10 min y hasta 200 MB; lo ideal son unos 2 min en 1080p). La app lo sube a
+HeyGen en tres pasos (subida directa), crea el avatar (`POST /v3/avatars`, `digital_twin`) y guarda
+la autorización escrita de la persona. HeyGen clona su voz de la misma grabación. Después, la app
+genera el enlace de consentimiento (válido 24 h), que la persona abre para grabar una frase corta
+con la cámara. Cuando el entrenamiento y el consentimiento terminan, el avatar aparece en la lista
+con su voz clonada como voz original. Los avatares creados se registran en
+`server/data/brand/digital-twins.json`.
+
+Solo se usan motores de calidad. Según `supported_api_engines`, la app elige Avatar V si el avatar lo
+admite y, si no, Avatar IV, siempre en 1080p. Los avatares que solo admiten Avatar III no aparecen en
+la app, y el servidor rechaza crear un video con ellos. En el modo Video Agent la API no permite fijar
+el motor: el prompt le pide Avatar V o IV al agente, pero HeyGen no confirma cuál usó.
 
 Orden de prioridad al escribir guiones: 1) reglas de cumplimiento, 2) `lineamientos-video.md`,
 3) `empresa.md` y lineamientos de diseño, 4) reglas aprendidas de video o generales, 5) temática.
@@ -450,6 +471,90 @@ estima el costo en dólares: antes de generar muestra la duración estimada y el
 cuenta. Consulta la tarifa vigente en tu panel de HeyGen. Para la primera prueba, usa un avatar de
 stock, 15 segundos y una sola escena.
 
+## Mis contenidos, kit de marca y edición de imágenes
+
+- **Mis contenidos** (menú superior): todo queda guardado automáticamente en
+  `server/data/library/`, aunque no lo descargues. Cada imagen se guarda en cuanto se genera, y un
+  ajuste reemplaza la versión anterior. Tiene tres pestañas:
+  - **Imágenes:** imágenes únicas, carruseles y ediciones, con descarga (ZIP en carruseles),
+    copiar texto, editar y borrar. **Importar imágenes** suma lo que ya tenías descargado (hasta 20
+    a la vez).
+  - **Reels de la app:** los reels terminados.
+  - **Videos en HeyGen:** los videos de la cuenta, también los hechos en su web. Sus enlaces son
+    temporales.
+- **Kit de marca** (Configuración, paso 3):
+  - **Logo y colores:** se muestran tal como salen de los archivos de marca.
+  - **Slogans, frases e indicaciones de identidad:** se envían como regla obligatoria y textual a
+    los prompts de imágenes, a los guiones de reels y a las sugerencias de temas.
+  - **Logos de asociaciones:** se usan en todas las piezas o solo en el cierre. En las imágenes,
+    Gemini los recibe como referencia; en los reels, la app los compone exactos en la tarjeta de
+    cierre (estilo dinámico) y los adjunta al agente de HeyGen.
+  - **Kit de HeyGen y ubicación del logo.**
+
+  Se guarda en `server/data/brand/identity.json` y los logos en `server/data/brand/partners/`.
+- **Editar una imagen tuya** (Crear contenido): subes una imagen, o eliges una de Mis contenidos,
+  y escribes qué cambiar. Opcionalmente se aplica la marca (logo, paleta, slogans). Puedes elegir
+  el formato y seguir ajustando el último resultado. La IA vuelve a generar la imagen, así que
+  puede cambiar detalles pequeños. Con fotos de pacientes: solo con consentimiento, sin datos que
+  los identifiquen y nunca para alterar resultados.
+
+## Claude Desktop como director (piloto)
+
+La app incluye un servidor MCP (`server/src/mcp/index.ts`) para que Claude Desktop la use como
+herramienta: Claude decide y escribe, y la app ejecuta con Gemini. Habla con la app abierta por
+HTTP local (`127.0.0.1:3001`), así las API keys nunca pasan por Claude. Todo lo que crea queda en
+Mis contenidos con origen "Creada con Claude".
+
+| Herramienta | Qué hace |
+| --- | --- |
+| `leer_marca` | Empresa, lineamientos de diseño y video, slogans, identidad, asociaciones y reglas de cumplimiento. |
+| `crear_imagen` | Una imagen con la dirección de arte que escribe Claude, con el logo real. |
+| `crear_publicacion` | El flujo completo de la app a partir de un tema (hasta 5 imágenes en el piloto). |
+| `editar_imagen` | Edita una imagen de la biblioteca; el resultado es una pieza nueva. |
+| `ver_biblioteca` / `ver_imagen` | Lista y muestra lo guardado. |
+| `leer_archivo_marca` | Contenido exacto de empresa, diseño o video. |
+| `actualizar_archivo_marca` | Reemplaza un archivo de marca por una versión mejorada (Claude muestra los cambios y pide confirmación). |
+| `actualizar_identidad` | Reemplaza slogans, frases e indicaciones de tono. |
+| `ver_versiones_marca` / `ver_version_marca` / `restaurar_version_marca` | Historial: antes de cada cambio se guarda una copia (20 por archivo) y se puede volver a ella. |
+| `crear_video` | Reel con el Video Agent de HeyGen: Claude escribe el guion escena por escena y el estilo; la app agrega las reglas de la marca (logo fijo, asociaciones, cumplimiento, zonas seguras, Avatar V/IV, kit de HeyGen). Prepara primero el storyboard. |
+| `ver_video` / `responder_agente_video` | Storyboard y mensajes del agente; pedirle cambios o aprobar (solo aprobar genera y cobra). |
+| `editar_escenas_video` | Cambios solo en algunas escenas de un reel terminado, o en todas. |
+| `listar_videos` / `listar_avatares` / `listar_voces` | Reels, avatares (los propios primero, con su voz original) y voces en español. |
+| `ver_looks_avatar` | Otros looks (ropa, pose, fondo) de un avatar, con vista previa. |
+| `cambiar_ropa_avatar` / `estado_look` | Ropa nueva para un avatar **propio** (gemelo digital o de foto): HeyGen crea otro look de la misma persona. La autorización de imagen se copia al look nuevo. Los avatares de stock no se pueden vestir distinto: solo se elige otro de sus looks. |
+
+**Historial de la marca:** cualquier cambio a los archivos de marca o a la identidad, desde la app
+o desde Claude, guarda antes una copia en `server/data/brand/history/`. Así nada se pierde aunque
+Claude o alguien del equipo reemplace un archivo.
+
+**Opción recomendada: extensión de Claude Desktop (`.mcpb`).**
+1. Genera el paquete con `npm run mcpb`. Crea `creador-de-contenido.mcpb` en la raíz del
+   proyecto: un solo archivo JavaScript, sin `node_modules` ni componentes nativos, que funciona
+   en Windows y macOS.
+2. En Claude Desktop, ve a **Configuración → Extensiones** y arrastra el archivo, o haz doble clic
+   en él. Claude Desktop lo ejecuta con su propio Node, sin el Node portátil.
+3. Deja la app abierta con `iniciar.bat`. Si la app usa otra dirección, cámbiala en la
+   configuración de la extensión ("Dirección de la app").
+
+En cuentas de empresa, el administrador puede tener que permitir la extensión (lista de
+extensiones permitidas). Si antes usaste `conectar-claude.bat`, ejecuta
+`quitar-conexion-claude.bat` para que las herramientas no aparezcan dos veces.
+
+Las vistas previas que recibe Claude las reduce la app (`/api/library/:id/:n?preview=768`), así
+que el servidor MCP no necesita `sharp`.
+
+**Alternativa: conexión manual en Windows.**
+1. Abre `iniciar.bat` una vez, para que se prepare la app.
+2. Doble clic en `conectar-claude.bat`. Registra el servidor en la configuración de Claude Desktop
+   (`%APPDATA%\Claude\claude_desktop_config.json`, y la de la versión de la Microsoft Store si
+   existe), con una copia de seguridad.
+3. Cierra Claude Desktop por completo y vuelve a abrirlo.
+4. Deja la app abierta con `iniciar.bat` mientras uses Claude.
+
+Claude Desktop pide permiso antes de usar cada herramienta. Generar imágenes consume saldo de
+Gemini. Usa la cuenta corporativa de Claude: el administrador puede tener que permitir los
+servidores MCP.
+
 ## Variables de entorno
 
 Se definen en `.env` (raíz del proyecto). Ver [.env.example](.env.example).
@@ -478,6 +583,9 @@ Se ejecutan desde la raíz del proyecto.
 | `npm run probar:heygen` | Verifica la conexión con HeyGen listando avatares (solo lectura). |
 | `iniciar.bat` (Windows) | Prepara todo la primera vez (Node portátil, componentes, compilación) y abre la app. |
 | `actualizar.bat` (Windows) | Reinstala componentes y vuelve a compilar tras recibir una versión nueva. |
+| `npm run mcpb`      | Empaqueta el servidor MCP como extensión de Claude Desktop (`creador-de-contenido.mcpb`). |
+| `quitar-conexion-claude.bat` (Windows) | Quita la conexión manual con Claude Desktop (por ejemplo, al pasar a la extensión). |
+| `conectar-claude.bat` (Windows) | Registra la app como servidor MCP en Claude Desktop (con copia de seguridad de su configuración). |
 | `npm run format`    | Da formato al código con Prettier.                            |
 
 ## Arquitectura
@@ -602,6 +710,25 @@ Todas las rutas cuelgan de `/api`. Las marcadas con 🔒 solo aceptan peticiones
 | `POST /api/reels/generate` 🔒    | Crea el video en HeyGen (exige `confirmed: true`). En edición HeyGen, prepara el storyboard. |
 | `POST /api/reels/agent/preview`  | Prompt exacto que se enviaría al Video Agent (no envía nada).   |
 | `POST /api/reels/jobs/:id/agent-message` 🔒 | Pedir cambios al storyboard o aprobarlo y generar.   |
+| `GET /api/library`              | Mis contenidos (imágenes guardadas, más recientes primero).     |
+| `POST /api/library/import` 🔒    | Importa imágenes propias (multipart `images`, hasta 20).        |
+| `DELETE /api/library/:id` 🔒     | Borra una pieza y sus archivos.                                 |
+| `GET /api/context/identity`      | Slogans, frases, identidad, asociaciones y paleta de la marca.  |
+| `PUT /api/context/identity` 🔒   | Guarda slogans, frases e indicaciones de identidad.             |
+| `POST /api/context/identity/partners` 🔒 | Agrega el logo de una asociación (multipart `logo`). |
+| `PUT /api/context/markdown/:kind` 🔒 | Reemplaza un archivo de marca (`company`, `design`, `videoGuidelines`) guardando antes una copia. |
+| `GET /api/context/versions`      | Versiones guardadas de los archivos de marca y la identidad.    |
+| `POST /api/context/versions/:id/restore` 🔒 | Vuelve a una versión (guarda antes la actual). |
+| `POST /api/images/edit`          | Edita una imagen propia con instrucciones y la guarda en la biblioteca. |
+| `GET /api/video/avatars/:id/looks` | Otros looks del mismo avatar (compatibles con Avatar IV o V).  |
+| `POST /api/video/avatars/:id/looks` 🔒 | Ropa nueva para un avatar propio (look desde una descripción). |
+| `GET /api/video/looks/:id`       | Estado de un look nuevo.                                        |
+| `GET /api/video/account-videos`  | Videos de la cuenta de HeyGen (también los hechos en su web).   |
+| `GET /api/video/twins`           | Gemelos digitales creados desde la app, con su estado en HeyGen. |
+| `POST /api/video/twins` 🔒       | Sube el video y crea el gemelo digital (multipart `footage`).   |
+| `POST /api/video/twins/:groupId/consent` 🔒 | Enlace de consentimiento para la persona (24 h). |
+| `GET /api/reels/jobs/:id/scenes` | Escenas del video terminado del agente (solo lectura).          |
+| `POST /api/reels/jobs/:id/scene-edits` 🔒 | Cambios solo en las escenas indicadas (genera un video nuevo). |
 | `GET /api/video/brand-kits`      | Kits de marca de la cuenta de HeyGen.                           |
 | `GET /api/reels/jobs`            | Historial de videos.                                            |
 | `GET /api/reels/jobs/:id`        | Estado de un video.                                             |

@@ -1,0 +1,60 @@
+.form {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.fine {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.check input {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  accent-color: var(--signal);
+}
+
+.advanced summary {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.compare figure {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.compare img {
+  width: 100%;
+  max-height: 32rem;
+  border-radius: var(--radius-md);
+  background: var(--sunken);
+  object-fit: contain;
+}
+
+.compare figcaption {
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  text-align: center;
+}

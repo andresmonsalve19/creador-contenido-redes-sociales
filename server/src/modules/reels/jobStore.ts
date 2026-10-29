@@ -71,6 +71,15 @@ export const jobSchema = z.object({
           thumbnailUrl: z.string().nullable(),
         }),
       ),
+      /** Cambios por escena pedidos sobre el video terminado (el más reciente primero). */
+      edits: z
+        .array(
+          z.object({
+            at: z.string(),
+            items: z.array(z.object({ scene: z.number().int().min(1), text: z.string() })),
+          }),
+        )
+        .default([]),
     })
     .nullish(),
 });

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { errorMessage } from '../../../shared/api/client';
 import { ModelSelector } from '../../../shared/models/ModelSelector';
 import { useModels } from '../../../shared/models/useModels';
@@ -13,9 +14,11 @@ import { Select } from '../../../shared/ui/Select';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { AvatarPicker } from '../../../shared/video/AvatarPicker';
 import { genderOf, suggestVoice, voicesByAvatar } from '../../../shared/video/gender';
-import { VOICE_LANGUAGES } from '../../../shared/video/types';
-import { useAvatars, useVoices } from '../../../shared/video/useVideo';
+import { VOICE_LANGUAGES, type VideoVoice } from '../../../shared/video/types';
+import { useAvatars, useVoice, useVoices } from '../../../shared/video/useVideo';
 import { VoicePicker } from '../../../shared/video/VoicePicker';
+import { VoiceDesigner } from '../../../shared/video/VoiceDesigner';
+import { withVoices } from '../../../shared/video/recommend';
 import { MAX_AVATARS } from '../types';
 import type { WizardState } from '../wizardReducer';
 import styles from '../reels.module.css';
@@ -45,7 +48,11 @@ export function SettingsStep({ state, favoriteAvatarIds, onBack, onContinue }: S
   const [contact, setContact] = useState(state.contact);
   const [ctaChoice, setCtaChoice] = useState(() => ctaChoiceFrom(state.cta));
   const voices = useVoices(voiceLanguage);
+  /** Voces nuevas diseñadas con HeyGen y elegidas (no están en la lista del idioma). */
+  const [pickedVoices, setPickedVoices] = useState<VideoVoice[]>([]);
   const mainAvatar = avatars.data?.find((avatar) => avatar.id === avatarIds[0]);
+  /** Voz original del avatar principal: es la que mejor le encaja (1:1). */
+  const original = useVoice(mainAvatar?.defaultVoiceId);
 
   // Sin elección explícita se usa el modelo recomendado.
   const selectedText = text ?? texts.data?.recommendedId ?? null;
@@ -91,9 +98,10 @@ export function SettingsStep({ state, favoriteAvatarIds, onBack, onContinue }: S
               value={avatarIds}
               onChange={(ids) => {
                 setAvatarIds(ids);
-                // Si cambia el avatar principal, la voz se ajusta a su género.
+                // Si cambia el avatar principal, se propone su voz original (o una de su género).
                 const main = avatars.data.find((a) => a.id === ids[0]);
-                setVoiceId(suggestVoice(main, voices.data ?? [], voiceId));
+                if (main?.id === avatarIds[0]) return;
+                setVoiceId(main?.defaultVoiceId ?? suggestVoice(main, voices.data ?? [], voiceId));
               }}
               pinnedIds={favoriteAvatarIds}
             />
@@ -101,6 +109,13 @@ export function SettingsStep({ state, favoriteAvatarIds, onBack, onContinue }: S
           <p className={styles.fine}>
             El primero es el principal. Con varios, puedes alternarlos entre escenas en el siguiente
             paso.
+          </p>
+          <p className={styles.fine}>
+            ¿Quieres un avatar de una persona real de tu marca, con su propia voz?{' '}
+            <Link to="/setup?paso=video" target="_blank" rel="noreferrer">
+              Crea tu propio avatar
+            </Link>{' '}
+            (se abre en otra pestaña; luego vuelve aquí y recarga la lista).
           </p>
         </div>
 
@@ -120,13 +135,25 @@ export function SettingsStep({ state, favoriteAvatarIds, onBack, onContinue }: S
           ) : voices.isError ? (
             <Alert>{errorMessage(voices.error)}</Alert>
           ) : (
-            <VoicePicker
-              legend="Voz del avatar principal"
-              voices={voices.data}
-              value={voiceId}
-              onChange={setVoiceId}
-              gender={genderOf(mainAvatar)}
-            />
+            <>
+              <VoicePicker
+                legend="Voz del avatar principal"
+                voices={withVoices(voices.data, pickedVoices)}
+                value={voiceId}
+                onChange={setVoiceId}
+                gender={genderOf(mainAvatar)}
+                original={original.data}
+                language={voiceLanguage}
+              />
+              <VoiceDesigner
+                gender={genderOf(mainAvatar)}
+                value={voiceId}
+                onPick={(voice) => {
+                  setPickedVoices((current) => [voice, ...current]);
+                  setVoiceId(voice.id);
+                }}
+              />
+            </>
           )}
           {avatarIds.length > 1 && (
             <p className={styles.fine}>

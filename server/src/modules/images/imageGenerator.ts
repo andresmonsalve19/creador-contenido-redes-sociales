@@ -1,6 +1,7 @@
 import { getProvider } from '../../shared/ai/providers/index.js';
 import type { InlineImage } from '../../shared/ai/providers/types.js';
 import type { BrandContext } from '../../shared/brandContext/contextStore.js';
+import { carriesPartnerLogo } from './promptBuilder.js';
 import type { GenerateBody } from './schemas.js';
 
 /**
@@ -16,6 +17,14 @@ export async function generateBrandImage(
   const notes = [
     'Imagen de referencia 1: el logo oficial de la marca. Reprodúcelo fielmente (forma, proporciones y colores) en la posición indicada; no inventes otro logo.',
   ];
+
+  for (const partner of brand.partnerLogos) {
+    if (!carriesPartnerLogo(partner.usage, body.role)) continue;
+    references.push(partner.image);
+    notes.push(
+      `Imagen de referencia ${references.length}: el logo de ${partner.name}, asociación que respalda a la marca. Inclúyelo pequeño en la franja "Miembro de" que indica el prompt, reproducido fielmente (forma, proporciones y colores), nunca más grande que el logo de la marca.`,
+    );
+  }
 
   if (body.styleReference) {
     references.push(body.styleReference);

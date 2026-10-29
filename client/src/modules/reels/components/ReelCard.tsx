@@ -7,7 +7,8 @@ import { Button } from '../../../shared/ui/Button';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { TextArea } from '../../../shared/ui/TextArea';
 import { fetchJob, jobKey, jobsKey, requestScriptRevision } from '../api';
-import { STATUS_LABEL, isActiveJob } from '../types';
+import { STATUS_LABEL, canEditScenes, isActiveJob } from '../types';
+import { SceneEditor } from './SceneEditor';
 import { StoryboardReview } from './StoryboardReview';
 import { activeCards, type WizardAction, type WizardState } from '../wizardReducer';
 import styles from '../reels.module.css';
@@ -173,6 +174,8 @@ export function ReelCard({ jobId, state, dispatch }: ReelCardProps) {
                 </button>
               )}
             </div>
+
+            {data && canEditScenes(data) && <SceneEditor job={data} />}
 
             {data && !isActiveJob(data.status) && data.status !== 'reviewing' && (
               <form className={styles.feedback} onSubmit={handleRevise}>

@@ -22,16 +22,12 @@ import {
   type VideoDuration,
   type VideoSettings,
   type VideoSettingsResponse,
+  type VideoVoice,
 } from '../video/types';
-import {
-  useAvatars,
-  useBrandKits,
-  useVideoSettings,
-  useVoices,
-  videoKeys,
-} from '../video/useVideo';
-import { BrandKitCreator } from './BrandKitCreator';
+import { useAvatars, useVideoSettings, useVoice, useVoices, videoKeys } from '../video/useVideo';
 import { VoicePicker } from '../video/VoicePicker';
+import { VoiceDesigner } from '../video/VoiceDesigner';
+import { withVoices } from '../video/recommend';
 import styles from './Setup.module.css';
 
 const BACKGROUND_TYPES = ['image/png', 'image/jpeg'];
@@ -96,7 +92,10 @@ function Form({
   const [backgroundFile, setBackgroundFile] = useState<File | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
   const voices = useVoices(draft.voiceLanguage);
-  const brandKits = useBrandKits();
+  /** Voz original del avatar por defecto: es la que mejor le encaja (1:1). */
+  const original = useVoice(avatars.find((a) => a.id === draft.defaultAvatarId)?.defaultVoiceId);
+  /** Voces nuevas diseñadas con HeyGen y elegidas (no están en la lista del idioma). */
+  const [pickedVoices, setPickedVoices] = useState<VideoVoice[]>([]);
 
   const set = <K extends keyof VideoSettings>(key: K, value: VideoSettings[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
@@ -173,9 +172,12 @@ function Form({
         value={draft.defaultAvatarId ? [draft.defaultAvatarId] : []}
         onChange={([id]) => {
           set('defaultAvatarId', id ?? null);
-          // La voz por defecto se ajusta para que sea del mismo género que el avatar.
+          // Se propone la voz original del avatar; si no tiene, una de su mismo género.
           const avatar = avatars.find((a) => a.id === id);
-          set('defaultVoiceId', suggestVoice(avatar, voices.data ?? [], draft.defaultVoiceId));
+          set(
+            'defaultVoiceId',
+            avatar?.defaultVoiceId ?? suggestVoice(avatar, voices.data ?? [], draft.defaultVoiceId),
+          );
         }}
         pinnedIds={draft.favoriteAvatarIds}
       />
@@ -253,13 +255,25 @@ function Form({
       ) : voices.isError ? (
         <Alert>{errorMessage(voices.error)}</Alert>
       ) : (
-        <VoicePicker
-          legend="Voz por defecto"
-          voices={voices.data}
-          value={draft.defaultVoiceId}
-          onChange={(id) => set('defaultVoiceId', id)}
-          gender={genderOf(avatars.find((a) => a.id === draft.defaultAvatarId))}
-        />
+        <>
+          <VoicePicker
+            legend="Voz por defecto"
+            voices={withVoices(voices.data, pickedVoices)}
+            value={draft.defaultVoiceId}
+            onChange={(id) => set('defaultVoiceId', id)}
+            gender={genderOf(avatars.find((a) => a.id === draft.defaultAvatarId))}
+            original={original.data}
+            language={draft.voiceLanguage}
+          />
+          <VoiceDesigner
+            gender={genderOf(avatars.find((a) => a.id === draft.defaultAvatarId))}
+            value={draft.defaultVoiceId}
+            onPick={(voice) => {
+              setPickedVoices((current) => [voice, ...current]);
+              set('defaultVoiceId', voice.id);
+            }}
+          />
+        </>
       )}
 
       <label className={styles.range}>
@@ -337,28 +351,9 @@ function Form({
         onChange={(value) => set('durationSeconds', Number(value) as VideoDuration)}
       />
 
-      <div className={styles.authorizations}>
-        <h3>Kit de marca de HeyGen</h3>
-        <p className={styles.note}>
-          Lo usa la edición automática de HeyGen para aplicar tus colores, fuentes y logo.
-        </p>
-        {brandKits.isPending ? (
-          <Spinner label="Cargando kits de marca" />
-        ) : brandKits.isError ? (
-          <Alert>{errorMessage(brandKits.error)}</Alert>
-        ) : (
-          <Select
-            label="Kit por defecto para los reels"
-            options={[
-              { value: '', label: 'Sin kit (se adjunta el logo de la marca)' },
-              ...brandKits.data.map((kit) => ({ value: kit.id, label: kit.name })),
-            ]}
-            value={draft.brandKitId ?? ''}
-            onChange={(id) => set('brandKitId', id || null)}
-          />
-        )}
-        <BrandKitCreator onReady={(id) => set('brandKitId', id)} />
-      </div>
+      <p className={styles.note}>
+        El kit de marca de HeyGen y la ubicación del logo están en el paso "Kit de marca".
+      </p>
 
       <TextArea
         label="Reglas de cumplimiento (opcional)"

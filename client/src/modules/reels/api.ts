@@ -2,7 +2,15 @@ import { api } from '../../shared/api/client';
 import type { InlineImage } from '../../shared/api/types';
 import type { ContactValues } from '../../shared/publishing/contact';
 import type { VideoAspectRatio, VideoDuration } from '../../shared/video/types';
-import type { BrandCards, ReelJob, SceneText, ScriptResult, VideoSpec, VideoStyle } from './types';
+import type {
+  BrandCards,
+  ReelJob,
+  SceneText,
+  ScriptResult,
+  VideoScenes,
+  VideoSpec,
+  VideoStyle,
+} from './types';
 
 export interface ScriptRequest {
   textModel: string;
@@ -75,6 +83,23 @@ export const sendAgentMessage = (
   body: { approve: boolean; message: string; confirmed?: true },
 ) =>
   api<{ job: ReelJob }>(`/reels/jobs/${id}/agent-message`, { method: 'POST', json: body }).then(
+    (r) => r.job,
+  );
+
+/** Escenas del video terminado tal como están en HeyGen (solo lectura). */
+export const fetchScenes = (id: string, signal?: AbortSignal) =>
+  api<VideoScenes>(`/reels/jobs/${id}/scenes`, { signal });
+
+/** Cambios por escena: solo cambian las escenas indicadas. Genera un video nuevo. */
+export const sendSceneEdits = (
+  id: string,
+  body: {
+    snapshotVideoId: string;
+    editVersion: string;
+    edits: { sceneId: string; scene: number; text: string }[];
+  },
+) =>
+  api<{ job: ReelJob }>(`/reels/jobs/${id}/scene-edits`, { method: 'POST', json: body }).then(
     (r) => r.job,
   );
 

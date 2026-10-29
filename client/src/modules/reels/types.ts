@@ -102,6 +102,15 @@ export interface AgentState {
   /** Más recientes primero. */
   messages: { role: 'user' | 'model'; content: string; createdAt: number | null }[];
   storyboard: { id: string; type: string; url: string | null; thumbnailUrl: string | null }[];
+  /** Cambios por escena pedidos sobre el video terminado (los más recientes primero). */
+  edits?: { at: string; items: { scene: number; text: string }[] }[];
+}
+
+/** Escenas de un video terminado del agente, para pedir cambios por escena. */
+export interface VideoScenes {
+  videoId: string;
+  editVersion: string;
+  scenes: { id: string; script: string; hasPresenter: boolean }[];
 }
 
 export interface ReelJob {
@@ -150,3 +159,7 @@ export const MAX_AVATARS = 5;
 export const countWords = (text: string) => text.split(/\s+/).filter(Boolean).length;
 export const estimateSeconds = (text: string, wordsPerSecond: number) =>
   Math.round((countWords(text) / wordsPerSecond) * 10) / 10;
+
+/** Un video del agente terminado admite cambios por escena. */
+export const canEditScenes = (job: ReelJob) =>
+  job.spec.style === 'agent' && job.status === 'completed' && Boolean(job.agent?.sessionId);

@@ -19,6 +19,8 @@ export interface WizardState {
   topic: string;
   prompts: PromptsResult | null;
   results: SlideResult[];
+  /** Pieza de la biblioteca donde se guardan las imágenes de estos prompts. */
+  publicationId: string | null;
 }
 
 export type WizardAction =
@@ -44,10 +46,15 @@ export const initialWizardState: WizardState = {
   topic: '',
   prompts: null,
   results: [],
+  publicationId: null,
 };
 
 /** Cambiar el encargo invalida los prompts y las imágenes generadas con él. */
-const resetOutput = { prompts: null, results: [] } satisfies Partial<WizardState>;
+const resetOutput = {
+  prompts: null,
+  results: [],
+  publicationId: null,
+} satisfies Partial<WizardState>;
 
 export function wizardReducer(state: WizardState, action: WizardAction): WizardState {
   switch (action.type) {
@@ -86,6 +93,8 @@ export function wizardReducer(state: WizardState, action: WizardAction): WizardS
         ...state,
         prompts: action.prompts,
         results: action.prompts.slides.map(() => ({ status: 'idle' })),
+        // Prompts nuevos = pieza nueva en la biblioteca.
+        publicationId: crypto.randomUUID(),
       };
     case 'editPrompt': {
       if (!state.prompts) return state;

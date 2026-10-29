@@ -11,3 +11,7 @@ server/data/
 
 # Node.js portatil que descarga iniciar.bat en Windows
 herramientas/node/
+
+# Extensión de Claude Desktop (se genera con npm run mcpb)
+server/build/
+creador-de-contenido.mcpb

@@ -20,12 +20,22 @@ import { VideoProviderError } from '../errors.js';
 import type {
   AgentResource,
   AgentSession,
+  AccountVideo,
   AgentSessionRequest,
+  LookState,
+  ConsentStatus,
+  DigitalTwinCreated,
+  DigitalTwinState,
+  TwinStatus,
+  TwinVideoMimeType,
+  SceneEdit,
+  VideoScenes,
   AgentStatus,
   AvatarType,
   BrandKit,
   BrandKitDetail,
   BrandKitUpdate,
+  VoiceDesignRequest,
   RenderRequest,
   RenderState,
   SceneBackground,
@@ -38,6 +48,8 @@ import { BRAND_COLOR_ROLES } from '../types.js';
 
 const BASE_URL = 'https://api.heygen.com';
 const REQUEST_TIMEOUT_MS = 30_000;
+/** Subir un video de hasta 200 MB puede tardar varios minutos. */
+const UPLOAD_TIMEOUT_MS = 15 * 60_000;
 const PAGE_SIZE_LOOKS = 50;
 const PAGE_SIZE_VOICES = 100;
 /**
@@ -76,12 +88,28 @@ const pageSchema = <T extends z.ZodType>(item: T) =>
     next_token: nullableString,
   });
 
+/** Código ISO de los idiomas que ofrece la app (HeyGen etiqueta algunas voces así). */
+const LANGUAGE_CODES: Record<string, string> = {
+  spanish: 'es',
+  english: 'en',
+  portuguese: 'pt',
+  french: 'fr',
+};
+
+/** "Spanish", "es" y "es-CO" cuentan como el mismo idioma. */
+function isLanguage(value: string | null | undefined, name: string, code?: string): boolean {
+  const label = value?.trim().toLowerCase() ?? '';
+  if (label === name.trim().toLowerCase()) return true;
+  return Boolean(code && (label === code || label.startsWith(`${code}-`)));
+}
+
 const voiceSchema = z.object({
   voice_id: z.string(),
   name: z.string().nullish(),
   language: z.string().nullish(),
   gender: nullableString,
   preview_audio_url: nullableString,
+  type: nullableString,
 });
 
 const creditPool = z.object({ remaining: z.number().nullish() }).nullish();
@@ -195,6 +223,7 @@ const agentSessionSchema = z.object({
     title: nullableString,
     video_id: nullableString,
     messages: z.array(agentMessageSchema).nullish(),
+    error: z.object({ code: nullableString, message: nullableString }).nullish(),
   }),
 });
 
@@ -206,6 +235,88 @@ const agentResourceSchema = z.object({
     thumbnail_url: nullableString,
   }),
 });
+
+const videoScenesSchema = z.object({
+  data: z.object({
+    video_id: z.string(),
+    edit_version: z.string(),
+    scenes: z
+      .array(
+        z.object({
+          id: z.string(),
+          script: z.array(z.object({ text: z.string().nullish() })).nullish(),
+          elements: z.array(z.object({ type: z.string().nullish() })).nullish(),
+        }),
+      )
+      .nullish(),
+  }),
+});
+
+/** Texto hablado de una escena, sin etiquetas como <break time="1s"/>. */
+const spokenText = (entries: { text?: string | null }[]) =>
+  entries
+    .map((entry) => (entry.text ?? '').replace(/<[^>]*>/g, ' '))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const directUploadSchema = z.object({
+  data: z.object({
+    asset_id: z.string(),
+    upload_url: z.string(),
+    upload_headers: z.record(z.string(), z.string()).nullish(),
+  }),
+});
+
+const avatarErrorSchema = z.object({ message: z.string().nullish() }).nullish();
+
+const createTwinSchema = z.object({
+  data: z.object({
+    avatar_item: z.object({ id: z.string(), default_voice_id: nullableString }),
+    avatar_group: z.object({ id: z.string() }),
+  }),
+});
+
+const twinLookSchema = z.object({
+  data: z.object({
+    status: nullableString,
+    preview_image_url: nullableString,
+    default_voice_id: nullableString,
+    supported_api_engines: z.array(z.string()).nullish(),
+    error: avatarErrorSchema,
+  }),
+});
+
+const twinGroupSchema = z.object({
+  data: z.object({
+    consent_status: nullableString,
+    default_voice_id: nullableString,
+    error: avatarErrorSchema,
+  }),
+});
+
+const consentSchema = z.object({ data: z.object({ url: nullableString }) });
+
+const TWIN_STATUSES: readonly TwinStatus[] = [
+  'processing',
+  'pending_consent',
+  'completed',
+  'failed',
+];
+const CONSENT_STATUSES: readonly ConsentStatus[] = ['pending', 'accepted', 'rejected'];
+
+const accountVideoSchema = z.object({
+  id: z.string(),
+  title: nullableString,
+  status: nullableString,
+  created_at: z.number().nullish(),
+  duration: z.number().nullish(),
+  thumbnail_url: nullableString,
+  video_url: nullableString,
+  captioned_video_url: nullableString,
+});
+/** Los últimos videos de la cuenta (2 páginas de 50). */
+const ACCOUNT_VIDEO_PAGES = 2;
 
 const AGENT_STATUSES: readonly AgentStatus[] = [
   'thinking',
@@ -553,23 +664,47 @@ export class HeyGenProvider implements VideoProvider {
   }
 
   async listVoices(language?: string): Promise<VideoVoice[]> {
-    const params: Record<string, string> = {
-      limit: String(PAGE_SIZE_VOICES),
-      ...(language ? { language } : {}),
-    };
-    const [own, stock] = await Promise.all([
-      this.paginate(voiceSchema, '/v3/voices', { ...params, type: 'private' }, MAX_PRIVATE_PAGES),
+    const params: Record<string, string> = { limit: String(PAGE_SIZE_VOICES) };
+    const code = language ? LANGUAGE_CODES[language.trim().toLowerCase()] : undefined;
+    const [own, stock, coded] = await Promise.all([
       this.paginate(
         voiceSchema,
         '/v3/voices',
-        { ...params, type: 'public' },
+        { ...params, ...(language && { language }), type: 'private' },
+        MAX_PRIVATE_PAGES,
+      ),
+      this.paginate(
+        voiceSchema,
+        '/v3/voices',
+        { ...params, ...(language && { language }), type: 'public' },
         MAX_PUBLIC_VOICE_PAGES,
       ),
+      // Algunas voces vienen con el código ("es") en lugar del nombre ("Spanish"); HeyGen solo
+      // las pone primero si se piden por código.
+      code
+        ? this.paginate(voiceSchema, '/v3/voices', { ...params, language: code, type: 'public' }, 1)
+        : [],
     ]);
+    // HeyGen no filtra por idioma: pone primero las de ese idioma, luego las "Multilingual" y
+    // después todas las demás. Se dejan solo las del idioma pedido, sin repetir.
+    const seen = new Set<string>();
     return [
       ...own.map((voice) => toVoice(voice, 'private')),
       ...stock.map((voice) => toVoice(voice, 'public')),
-    ];
+      ...coded.map((voice) => toVoice(voice, 'public')),
+    ].filter((voice) => {
+      if (seen.has(voice.id)) return false;
+      seen.add(voice.id);
+      return !language || isLanguage(voice.language, language, code);
+    });
+  }
+
+  async getVoice(id: string): Promise<VideoVoice> {
+    const { data } = await this.request(
+      z.object({ data: voiceSchema }),
+      `/v3/voices/${encodeURIComponent(id)}`,
+    );
+    return toVoice(data, data.type === 'private' ? 'private' : 'public');
   }
 
   async uploadImage(
@@ -590,6 +725,24 @@ export class HeyGenProvider implements VideoProvider {
       idempotencyKey,
     });
     return result.data.video_id;
+  }
+
+  async listAccountVideos(): Promise<AccountVideo[]> {
+    const videos = await this.paginate(
+      accountVideoSchema,
+      '/v3/videos',
+      { limit: '50' },
+      ACCOUNT_VIDEO_PAGES,
+    );
+    return videos.map((video) => ({
+      id: video.id,
+      title: video.title ?? null,
+      status: video.status ?? 'unknown',
+      createdAt: video.created_at ?? null,
+      durationSeconds: video.duration ?? null,
+      thumbnailUrl: video.thumbnail_url ?? null,
+      videoUrl: video.captioned_video_url ?? video.video_url ?? null,
+    }));
   }
 
   async getVideo(id: string): Promise<RenderState> {
@@ -667,6 +820,9 @@ export class HeyGenProvider implements VideoProvider {
       progress: data.progress ?? null,
       title: data.title ?? null,
       videoId: data.video_id ?? null,
+      error: data.error?.message
+        ? { code: data.error.code ?? 'agent_failed', message: data.error.message }
+        : null,
       messages: (data.messages ?? []).map((message) => ({
         role: message.role === 'user' ? 'user' : 'model',
         content: message.content ?? '',
@@ -695,6 +851,182 @@ export class HeyGenProvider implements VideoProvider {
       url: data.url ?? null,
       thumbnailUrl: data.thumbnail_url ?? null,
     };
+  }
+
+  async uploadVideo(data: Buffer, mimeType: TwinVideoMimeType, fileName: string): Promise<string> {
+    const { data: upload } = await this.request(directUploadSchema, '/v3/assets/direct-uploads', {
+      method: 'POST',
+      json: { filename: fileName, content_type: mimeType, size_bytes: data.length },
+    });
+    // URL prefirmada de almacenamiento: no lleva la API key.
+    if (!upload.upload_url.startsWith('https://')) {
+      throw new VideoProviderError(502, {
+        proveedor: this.id,
+        codigo: 'invalid_upload_url',
+        mensaje: 'HeyGen entregó una dirección de subida no válida.',
+        reintentable: false,
+      });
+    }
+    let response: Response;
+    try {
+      response = await this.fetchImpl(upload.upload_url, {
+        method: 'PUT',
+        headers: upload.upload_headers ?? {},
+        body: new Uint8Array(data),
+        signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+      });
+    } catch {
+      throw networkError();
+    }
+    if (!response.ok) {
+      throw new VideoProviderError(502, {
+        proveedor: this.id,
+        codigo: `upload_http_${response.status}`,
+        mensaje: 'No se pudo subir el video a HeyGen. Intenta de nuevo.',
+        reintentable: true,
+      });
+    }
+    await this.request(z.unknown(), `/v3/assets/${encodeURIComponent(upload.asset_id)}/complete`, {
+      method: 'POST',
+      json: {},
+    });
+    return upload.asset_id;
+  }
+
+  async createDigitalTwin(
+    name: string,
+    assetId: string,
+    idempotencyKey: string,
+  ): Promise<DigitalTwinCreated> {
+    const { data } = await this.request(createTwinSchema, '/v3/avatars', {
+      method: 'POST',
+      idempotencyKey,
+      json: { type: 'digital_twin', name, file: { type: 'asset_id', asset_id: assetId } },
+    });
+    return {
+      lookId: data.avatar_item.id,
+      groupId: data.avatar_group.id,
+      voiceId: data.avatar_item.default_voice_id ?? null,
+    };
+  }
+
+  async getDigitalTwin(lookId: string, groupId: string): Promise<DigitalTwinState> {
+    const [{ data: look }, { data: group }] = await Promise.all([
+      this.request(twinLookSchema, `/v3/avatars/looks/${encodeURIComponent(lookId)}`),
+      this.request(twinGroupSchema, `/v3/avatars/${encodeURIComponent(groupId)}`),
+    ]);
+    const consentStatus = CONSENT_STATUSES.find((value) => value === group.consent_status) ?? null;
+    const status = TWIN_STATUSES.find((value) => value === look.status) ?? 'processing';
+    return {
+      // Entrenado pero sin consentimiento aceptado: aún no se puede usar.
+      status:
+        status === 'completed' && consentStatus !== 'accepted' && consentStatus !== null
+          ? 'pending_consent'
+          : status,
+      consentStatus,
+      error: look.error?.message ?? group.error?.message ?? null,
+      previewImageUrl: look.preview_image_url ?? null,
+      voiceId: look.default_voice_id ?? group.default_voice_id ?? null,
+      engines: look.supported_api_engines ?? [],
+    };
+  }
+
+  async createLookFromPrompt(
+    avatarId: string,
+    name: string,
+    prompt: string,
+    aspectRatio: '9:16' | '16:9' | '1:1' | 'auto',
+    idempotencyKey: string,
+  ): Promise<string> {
+    const { data } = await this.request(
+      z.object({ data: z.object({ avatar_item: z.object({ id: z.string() }) }) }),
+      '/v3/avatars',
+      {
+        method: 'POST',
+        idempotencyKey,
+        json: { type: 'prompt', name, prompt, avatar_id: avatarId, aspect_ratio: aspectRatio },
+      },
+    );
+    return data.avatar_item.id;
+  }
+
+  async getLookState(lookId: string): Promise<LookState> {
+    const { data } = await this.request(
+      twinLookSchema,
+      `/v3/avatars/looks/${encodeURIComponent(lookId)}`,
+    );
+    return {
+      id: lookId,
+      status: TWIN_STATUSES.find((value) => value === data.status) ?? 'processing',
+      error: data.error?.message ?? null,
+      previewImageUrl: data.preview_image_url ?? null,
+      engines: data.supported_api_engines ?? [],
+    };
+  }
+
+  async requestTwinConsent(groupId: string): Promise<string> {
+    const { data } = await this.request(
+      consentSchema,
+      `/v3/avatars/${encodeURIComponent(groupId)}/consent`,
+      { method: 'POST', json: {} },
+    );
+    if (!data.url) {
+      throw new VideoProviderError(502, {
+        proveedor: this.id,
+        codigo: 'consent_without_url',
+        mensaje: 'HeyGen no devolvió el enlace de consentimiento.',
+        reintentable: false,
+      });
+    }
+    return data.url;
+  }
+
+  async getVideoScenes(videoId: string): Promise<VideoScenes> {
+    const { data } = await this.request(
+      videoScenesSchema,
+      `/v3/videos/${encodeURIComponent(videoId)}/scenes`,
+    );
+    return {
+      videoId: data.video_id,
+      editVersion: data.edit_version,
+      scenes: (data.scenes ?? []).map((scene) => ({
+        id: scene.id,
+        script: spokenText(scene.script ?? []),
+        hasPresenter: (scene.elements ?? []).some((element) => element.type === 'avatar'),
+      })),
+    };
+  }
+
+  async editAgentScenes(
+    sessionId: string,
+    edits: SceneEdit[],
+    idempotencyKey: string,
+  ): Promise<string> {
+    const result = await this.request(
+      z.object({ data: z.object({ video_id: nullableString }) }),
+      `/v3/video-agents/${encodeURIComponent(sessionId)}`,
+      {
+        method: 'POST',
+        idempotencyKey,
+        json: {
+          edit_plan: edits.map((edit) => ({
+            scene_id: edit.sceneId,
+            text: edit.text,
+            scene_snapshot_video_id: edit.snapshotVideoId,
+            edit_version: edit.editVersion,
+          })),
+        },
+      },
+    );
+    if (!result.data.video_id) {
+      throw new VideoProviderError(502, {
+        proveedor: this.id,
+        codigo: 'edit_without_video',
+        mensaje: 'HeyGen aceptó los cambios pero no devolvió el nuevo video.',
+        reintentable: false,
+      });
+    }
+    return result.data.video_id;
   }
 
   async createBrandKitFromUrl(url: string, name: string, idempotencyKey: string): Promise<string> {
@@ -728,5 +1060,24 @@ export class HeyGenProvider implements VideoProvider {
       },
     );
     return toBrandKitDetail(data);
+  }
+
+  /** "Design a Voice": crea voces nuevas en la cuenta a partir de la descripción (POST /v3/voices). */
+  async designVoices(request: VoiceDesignRequest): Promise<VideoVoice[]> {
+    const result = await this.request(
+      z.object({ data: z.object({ voices: z.array(voiceSchema) }) }),
+      '/v3/voices',
+      {
+        method: 'POST',
+        json: {
+          prompt: request.prompt,
+          seed: request.seed,
+          ...(request.gender && { gender: request.gender }),
+        },
+      },
+    );
+    return result.data.voices.map((voice) =>
+      toVoice(voice, voice.type === 'private' ? 'private' : 'public'),
+    );
   }
 }

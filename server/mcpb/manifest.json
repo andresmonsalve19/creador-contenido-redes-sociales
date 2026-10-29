@@ -1,0 +1,129 @@
+{
+  "manifest_version": "0.3",
+  "name": "creador-de-contenido",
+  "display_name": "Creador de contenido",
+  "version": "0.2.1",
+  "description": "Conecta Claude con la app Creador de contenido: lee y mejora la marca, crea y edita imágenes, crea reels con el agente de HeyGen y cambia la ropa de avatares propios.",
+  "long_description": "Claude dirige y la app ejecuta. Requiere la app **Creador de contenido** abierta en este equipo (iniciar.bat). Las API keys se quedan en la app: esta extensión solo habla con ella por la red local (127.0.0.1). Todo lo que se crea queda en Mis contenidos, y cada cambio a los archivos de marca guarda antes una copia para poder deshacerlo.",
+  "author": {
+    "name": "BBLABS"
+  },
+  "icon": "icon.png",
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.mjs"],
+      "env": {
+        "APP_URL": "${user_config.app_url}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "leer_marca",
+      "description": "Lee empresa, lineamientos, slogans, identidad, asociaciones y reglas de cumplimiento."
+    },
+    {
+      "name": "crear_imagen",
+      "description": "Crea una imagen con la dirección de arte de Claude y el logo real de la marca."
+    },
+    {
+      "name": "crear_publicacion",
+      "description": "Crea una publicación completa (imagen o carrusel) con el flujo de la app."
+    },
+    {
+      "name": "editar_imagen",
+      "description": "Edita una imagen de Mis contenidos con instrucciones."
+    },
+    {
+      "name": "ver_biblioteca",
+      "description": "Lista lo guardado en Mis contenidos."
+    },
+    {
+      "name": "ver_imagen",
+      "description": "Muestra una imagen de Mis contenidos."
+    },
+    {
+      "name": "leer_archivo_marca",
+      "description": "Lee el contenido exacto de un archivo de marca."
+    },
+    {
+      "name": "actualizar_archivo_marca",
+      "description": "Reemplaza un archivo de marca por una versión mejorada (guarda antes una copia)."
+    },
+    {
+      "name": "actualizar_identidad",
+      "description": "Reemplaza slogans, frases e indicaciones de tono."
+    },
+    {
+      "name": "ver_versiones_marca",
+      "description": "Lista las copias guardadas de los archivos de marca."
+    },
+    {
+      "name": "ver_version_marca",
+      "description": "Lee una copia guardada."
+    },
+    {
+      "name": "restaurar_version_marca",
+      "description": "Vuelve a una copia guardada."
+    },
+    {
+      "name": "listar_avatares",
+      "description": "Lista los avatares (los propios primero) con su voz original."
+    },
+    {
+      "name": "ver_looks_avatar",
+      "description": "Muestra los otros looks (ropa) de un avatar."
+    },
+    {
+      "name": "cambiar_ropa_avatar",
+      "description": "Crea ropa nueva para un avatar propio."
+    },
+    {
+      "name": "estado_look",
+      "description": "Indica si un look nuevo está listo."
+    },
+    {
+      "name": "listar_voces",
+      "description": "Lista las voces en español."
+    },
+    {
+      "name": "crear_video",
+      "description": "Crea un reel con el agente de HeyGen siguiendo el guion de Claude y las reglas de la marca."
+    },
+    {
+      "name": "ver_video",
+      "description": "Estado de un reel, mensaje del agente y storyboard."
+    },
+    {
+      "name": "responder_agente_video",
+      "description": "Pide cambios al agente de HeyGen o aprueba el storyboard."
+    },
+    {
+      "name": "editar_escenas_video",
+      "description": "Cambia solo algunas escenas de un reel terminado."
+    },
+    {
+      "name": "listar_videos",
+      "description": "Lista los reels creados."
+    }
+  ],
+  "keywords": ["instagram", "marca", "imagenes", "contenido"],
+  "compatibility": {
+    "platforms": ["win32", "darwin"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
+  },
+  "user_config": {
+    "app_url": {
+      "type": "string",
+      "title": "Dirección de la app",
+      "description": "Dónde está abierta la app Creador de contenido. Déjala así salvo que soporte te indique otra.",
+      "default": "http://127.0.0.1:3001",
+      "required": false
+    }
+  }
+}

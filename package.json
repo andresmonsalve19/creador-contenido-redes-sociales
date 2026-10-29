@@ -14,7 +14,8 @@
     "test": "npm run test -w server",
     "probar:heygen": "npm run probar:heygen -w server",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "mcpb": "npm run mcpb -w server"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

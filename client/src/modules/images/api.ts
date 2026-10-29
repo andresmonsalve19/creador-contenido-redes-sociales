@@ -22,6 +22,14 @@ export interface GenerateRequest {
   /** Para ajustar una imagen ya generada con los comentarios del usuario. */
   previousImage?: InlineImage;
   feedback?: string;
+  /** Dónde guardarla en la biblioteca. */
+  library?: {
+    publicationId: string;
+    index: number;
+    format: PostFormat;
+    title: string;
+    caption: string;
+  };
 }
 
 export interface ReviseRequest {

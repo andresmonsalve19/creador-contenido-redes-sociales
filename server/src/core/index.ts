@@ -8,6 +8,7 @@ import { serverEnv } from '../shared/config/env.js';
 import { CLIENT_DIST } from '../shared/config/paths.js';
 import { setupRouter } from '../shared/credentials/setup.routes.js';
 import { learningRouter } from '../shared/learning/learning.routes.js';
+import { libraryRouter } from '../shared/library/library.routes.js';
 import { videoRouter } from '../shared/video/video.routes.js';
 import { errorHandler, notFound } from './middleware/errors.js';
 import { serverModules } from './moduleRegistry.js';
@@ -37,6 +38,7 @@ app.use('/api/setup', json, setupRouter);
 app.use('/api/context', contextRouter);
 app.use('/api/learning', json, learningRouter);
 app.use('/api/video', json, videoRouter);
+app.use('/api/library', json, libraryRouter);
 app.use('/api', json, aiRouter);
 
 app.use('/api', notFound);

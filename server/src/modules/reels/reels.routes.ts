@@ -11,6 +11,7 @@ import { parseModelJson } from '../../shared/ai/parseModelJson.js';
 import { getProvider } from '../../shared/ai/providers/index.js';
 import sharp from 'sharp';
 import { getBrandContext, readLogo, readMarkdown } from '../../shared/brandContext/contextStore.js';
+import { readIdentity, readPartnerLogos } from '../../shared/brandContext/identityStore.js';
 import { serverEnv } from '../../shared/config/env.js';
 import { AppError, badRequest, notReady } from '../../shared/http/errors.js';
 import { localOnly } from '../../shared/http/localOnly.js';
@@ -18,8 +19,14 @@ import { validate } from '../../shared/http/validate.js';
 import { readRulesFor } from '../../shared/learning/learningStore.js';
 import { assembleCaption } from '../../shared/publishing/caption.js';
 import { assertAvatarsAuthorized } from '../../shared/video/authorization.js';
+import { VideoProviderError } from '../../shared/video/errors.js';
 import { getVideoProvider, listAvatars, listVoices } from '../../shared/video/index.js';
-import { pickEngine, supportsMotionPrompt, type VideoAvatar } from '../../shared/video/types.js';
+import {
+  hasQualityEngine,
+  pickEngine,
+  supportsMotionPrompt,
+  type VideoAvatar,
+} from '../../shared/video/types.js';
 import { readBackgroundImage, readVideoSettings } from '../../shared/video/videoSettingsStore.js';
 import { buildAgentPrompt } from './agentPrompt.js';
 import { brandColorFrom, renderIntroCard, renderOutroCard } from './brandCards.js';
@@ -116,6 +123,7 @@ async function cardInput() {
   return {
     color: brandColorFrom(brand.design, preferred),
     logo: Buffer.from(brand.logo.data, 'base64'),
+    partners: brand.partnerLogos.map((partner) => Buffer.from(partner.image.data, 'base64')),
   };
 }
 
@@ -194,6 +202,8 @@ const runner = createJobRunner({
   getProvider: getVideoProvider,
   loadBackground,
   loadLogo: logoForAgent,
+  loadPartnerLogos: async () =>
+    (await readPartnerLogos()).map(({ mimeType, data }) => ({ mimeType, data })),
   reelsDir: REELS_DIR,
   timeoutMs: serverEnv.HEYGEN_POLL_TIMEOUT_MIN * 60_000,
   log: (message) => console.log(message),
@@ -215,6 +225,7 @@ async function scriptContext(): Promise<ScriptContext> {
     videoGuidelines,
     company: brand.company,
     design: brand.design,
+    identity: brand.identity,
     learning,
   };
 }
@@ -279,8 +290,9 @@ async function findJob(id: string): Promise<Job> {
 export const reelsRouter = Router();
 const json = express.json({ limit: '200kb' });
 
+// Solo avatares con Avatar IV o V: Avatar III no se usa.
 reelsRouter.get('/avatars', async (_req, res) => {
-  res.json({ avatars: await listAvatars() });
+  res.json({ avatars: (await listAvatars()).filter(hasQualityEngine) });
 });
 
 reelsRouter.get('/voices', async (req, res) => {
@@ -398,6 +410,12 @@ reelsRouter.post('/generate', localOnly, json, async (req, res) => {
     settings.authorizations,
   );
   const avatars = new Map(authorized.map((avatar) => [avatar.id, avatar]));
+  const lowQuality = authorized.find((avatar) => !hasQualityEngine(avatar));
+  if (lowQuality) {
+    throw badRequest(
+      `El avatar "${lowQuality.name}" solo admite Avatar III. Elige uno compatible con Avatar IV o V.`,
+    );
+  }
 
   // Edición automática: el agente de HeyGen arma el video. Primero prepara un storyboard y no
   // genera nada hasta que el usuario lo aprueba.
@@ -406,6 +424,8 @@ reelsRouter.post('/generate', localOnly, json, async (req, res) => {
     const prompt = buildAgentPrompt(spec, {
       complianceRules: settings.complianceRules,
       hasLogoFile: Boolean(await readLogo()),
+      logo: settings.logo,
+      partners: (await readIdentity()).partners,
     });
     const job = newJob(spec, duplicatedFrom, {
       sessionId: null,
@@ -413,6 +433,7 @@ reelsRouter.post('/generate', localOnly, json, async (req, res) => {
       progress: null,
       messages: [],
       storyboard: [],
+      edits: [],
     });
     await store.save(job);
     runner.enqueue(job.id);
@@ -433,7 +454,7 @@ reelsRouter.post('/generate', localOnly, json, async (req, res) => {
     for (const [id, look] of varied.looks) if (!avatars.has(id)) avatars.set(id, look);
   }
 
-  // Cada escena usa un motor que su avatar admite (p. ej. los de estudio solo Avatar III) y
+  // Cada escena usa el mejor motor que su avatar admite (Avatar V o IV) y
   // gestos solo si el avatar y el motor los admiten.
   scenes = scenes.map((scene) => {
     const avatar = scene.kind === 'avatar' ? avatars.get(scene.avatarId) : undefined;
@@ -537,6 +558,8 @@ reelsRouter.post('/agent/preview', json, async (req, res) => {
     prompt: buildAgentPrompt(spec, {
       complianceRules: settings.complianceRules,
       hasLogoFile: Boolean(await readLogo()),
+      logo: settings.logo,
+      partners: (await readIdentity()).partners,
     }),
   });
 });
@@ -566,6 +589,94 @@ reelsRouter.post('/jobs/:id/agent-message', localOnly, json, async (req, res) =>
       messages: [
         { role: 'user', content: message, createdAt: Math.floor(Date.now() / 1000) },
         ...job.agent.messages,
+      ],
+    },
+  });
+  runner.enqueue(id);
+  res.json({ job: publicJob(updated) });
+});
+
+const KEEP_THE_REST = 'Mantén exactamente igual todo lo que no se menciona aquí.';
+
+/** Un video del agente terminado admite cambios por escena sobre la misma sesión. */
+const editableAgentJob = async (id: string) => {
+  const job = await findJob(id);
+  const sessionId = job.agent?.sessionId;
+  if (job.spec.style !== 'agent' || !sessionId || !job.providerVideoId) {
+    throw badRequest('Solo los videos de edición automática admiten cambios por escena.');
+  }
+  if (job.status !== 'completed') throw badRequest('Espera a que el video termine.');
+  return { job, sessionId, videoId: job.providerVideoId };
+};
+
+/** Escenas del video tal como están ahora en HeyGen (lectura). */
+reelsRouter.get('/jobs/:id/scenes', async (req, res) => {
+  const { id } = validate(idParams, req.params);
+  const { videoId } = await editableAgentJob(id);
+  res.json(await getVideoProvider().getVideoScenes(videoId));
+});
+
+const sceneEditsBody = z.object({
+  snapshotVideoId: z.string().trim().min(1).max(200),
+  editVersion: z.string().regex(/^[0-9a-f]{64}$/, 'Vuelve a cargar las escenas.'),
+  edits: z
+    .array(
+      z.object({
+        sceneId: z.string().trim().min(1).max(255),
+        /** Número de la escena (1, 2, …) para el historial. */
+        scene: z.number().int().min(1).max(50),
+        text: z.string().trim().min(3, 'Describe el cambio.').max(2000),
+      }),
+    )
+    .min(1, 'Elige al menos una escena.')
+    .max(50),
+});
+
+/**
+ * Cambios por escena ("Edit Scenes" de HeyGen): solo cambian las escenas indicadas y el resto
+ * queda igual. Genera un video nuevo (cuesta créditos). Solo desde este equipo.
+ */
+reelsRouter.post('/jobs/:id/scene-edits', localOnly, json, async (req, res) => {
+  const { id } = validate(idParams, req.params);
+  const body = validate(sceneEditsBody, req.body);
+  const { job, sessionId, videoId } = await editableAgentJob(id);
+  if (body.snapshotVideoId !== videoId) {
+    throw new AppError(409, 'El video cambió. Vuelve a cargar las escenas.', 'STALE_SCENES');
+  }
+
+  let newVideoId: string;
+  try {
+    newVideoId = await getVideoProvider().editAgentScenes(
+      sessionId,
+      body.edits.map((edit) => ({
+        sceneId: edit.sceneId,
+        // Que el agente no "aproveche" para cambiar otras cosas de la escena.
+        text: `${edit.text}\n\n${KEEP_THE_REST}`,
+        snapshotVideoId: body.snapshotVideoId,
+        editVersion: body.editVersion,
+      })),
+      randomUUID(),
+    );
+  } catch (error) {
+    if (error instanceof VideoProviderError && error.status === 409) {
+      throw new AppError(409, 'El video cambió. Vuelve a cargar las escenas.', 'STALE_SCENES');
+    }
+    throw error;
+  }
+
+  const agent = job.agent!;
+  const updated = await store.update(id, {
+    providerVideoId: newVideoId,
+    status: 'processing',
+    error: null,
+    agent: {
+      ...agent,
+      edits: [
+        {
+          at: new Date().toISOString(),
+          items: body.edits.map(({ scene, text }) => ({ scene, text })),
+        },
+        ...agent.edits,
       ],
     },
   });

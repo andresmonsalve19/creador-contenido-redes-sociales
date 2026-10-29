@@ -53,6 +53,11 @@ export function listAvatars(): Promise<VideoAvatar[]> {
   return cached(`${provider.id}:avatars`, () => provider.listAvatars());
 }
 
+/** Olvida la lista de avatares guardada (p. ej. tras crear un gemelo digital). */
+export function forgetAvatars(): void {
+  for (const key of listCache.keys()) if (key.endsWith(':avatars')) listCache.delete(key);
+}
+
 /** Olvida los listados guardados (p. ej. tras crear un kit de marca). */
 export function forgetBrandKits(): void {
   for (const key of listCache.keys()) if (key.endsWith(':brand-kits')) listCache.delete(key);

@@ -38,7 +38,7 @@ aiRouter.post('/topic-suggestions', async (req, res) => {
     temperature: 1,
     jsonSchema: TOPIC_JSON_SCHEMA,
     ...buildTopicPrompt({
-      company: brand.company,
+      company: [brand.company, brand.identity].filter(Boolean).join('\n\n'),
       format,
       hint,
       learning: formatRulesForPrompt(await readRulesFor(kind)),

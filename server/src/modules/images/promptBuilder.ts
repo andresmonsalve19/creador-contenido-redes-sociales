@@ -46,6 +46,26 @@ const ROLE_GUIDE: Record<SlideRole, (ctx: SlideContext) => string> = {
   },
 };
 
+/** Imágenes que llevan los logos de asociaciones: todas, o solo la de cierre. */
+export const carriesPartnerLogo = (usage: 'always' | 'closing', role: SlideRole) =>
+  usage === 'always' || role === 'cta' || role === 'single';
+
+/** Indicaciones para ubicar los logos de asociaciones que el modelo de imagen recibirá. */
+function partnerBlock(partners: PromptContext['partnerLogos'], roles: SlideRole[]): string {
+  if (partners.length === 0) return '';
+  const lines = partners.map((partner) => {
+    const where = roles
+      .map((role, index) => (carriesPartnerLogo(partner.usage, role) ? index + 1 : null))
+      .filter((index) => index !== null);
+    return `- ${partner.name}: imagen(es) ${where.join(', ')}`;
+  });
+  return `# Logos de asociaciones (respaldo institucional)
+El modelo de imagen recibirá estos logos como referencia. En el prompt de cada imagen indicada, pide que aparezcan pequeños y juntos, en una franja discreta "Miembro de" cerca del pie de página o del logo de la marca, reproducidos fielmente a partir de sus imágenes de referencia (sin deformarlos ni cambiar sus colores) y nunca más grandes que el logo de la marca:
+${lines.join('\n')}
+
+`;
+}
+
 /** Rol de cada imagen según su posición: primera = gancho, última = llamado a la acción. */
 export function slideRoles(format: PromptsBody['format'], count: number): SlideRole[] {
   if (format === 'single') return ['single'];
@@ -93,7 +113,8 @@ Reglas para el texto de la publicación ("captionBody"):
 - NO incluyas correo, sitio web, teléfono ni hashtags en "captionBody": el sistema los agrega después.
 - "hashtags": entre 4 y 8, sin el símbolo #, sin espacios ni tildes, mezcla de marca, tema y sector.`;
 
-interface PromptContext extends Pick<BrandContext, 'company' | 'design'> {
+interface PromptContext extends Pick<BrandContext, 'company' | 'design' | 'identity'> {
+  partnerLogos: Pick<BrandContext['partnerLogos'][number], 'name' | 'usage'>[];
   /** Bloque de aprendizajes ya formateado (vacío si no hay). */
   learning: string;
 }
@@ -124,7 +145,7 @@ ${brand.company}
 # Lineamientos de diseño
 ${brand.design}
 
-${brand.learning ? `${brand.learning}\n\n` : ''}${contactBlock}
+${brand.identity ? `${brand.identity}\n\n` : ''}${partnerBlock(brand.partnerLogos, roles)}${brand.learning ? `${brand.learning}\n\n` : ''}${contactBlock}
 
 # Llamado a la acción elegido
 "${body.cta}"
